@@ -1,0 +1,174 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: classes
+    // Document ID: auto-generated or specific class ID
+    // Fields:
+    //   - name: string (required)
+    //   - instructor: string
+    //   - status: string (required, enum: normal, canceled, delayed, moved)
+    //   - details: string
+    //   - dayOfWeek: string (required, enum: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday)
+    //   - time: string (required)
+    //   - updatedAt: timestamp
+    //   - updatedBy: string (uid)
+    //
+    // Collection: users
+    // Document ID: userId (uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (optional if phone used)
+    //   - phoneNumber: string (optional if email used)
+    //   - displayName: string
+    //   - role: string (required, enum: student, admin)
+    //   - studentId: string (optional)
+    //
+    // Collection: deadlines
+    // Document ID: auto-generated
+    // Fields:
+    //   - title: string (required)
+    //   - type: string (required, enum: assignment, test, quiz, meeting, other)
+    //   - dueDate: string (required, YYYY-MM-DD)
+    //   - course: string
+    //   - priority: string (required, enum: low, medium, high)
+    //   - notes: string (optional)
+    //   - createdAt: timestamp
+    //
+    // Collection: sick_leaves
+    // Document ID: auto-generated
+    // Fields:
+    //   - studentId: string (required)
+    //   - studentName: string (required)
+    //   - reason: string (required)
+    //   - startDate: string (required, YYYY-MM-DD)
+    //   - endDate: string (required, YYYY-MM-DD)
+    //   - status: string (required, enum: pending, approved, rejected)
+    //   - submittedAt: timestamp
+    //   - adminComment: string (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "ananyabayable06@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidClass(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.status in ['normal', 'canceled', 'delayed', 'moved'] &&
+             data.dayOfWeek in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] &&
+             data.time is string && data.time.size() > 0 && data.time.size() < 50 &&
+             (!('instructor' in data) || (data.instructor is string && data.instructor.size() < 100)) &&
+             (!('details' in data) || (data.details is string && data.details.size() < 500)) &&
+             (!('room' in data) || (data.room is string || data.room == null)) &&
+             (!('id' in data) || (data.id is string)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string)) &&
+             (!('updatedBy' in data) || (data.updatedBy is string));
+    }
+
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             (!('email' in data) || (data.email is string && (data.email == "" || isValidEmail(data.email)))) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string || data.phoneNumber == null)) &&
+             (!('studentId' in data) || (data.studentId is string && data.studentId.size() < 50)) &&
+             data.role in ['student', 'admin'] &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100));
+    }
+
+    function isValidDeadline(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.type in ['assignment', 'test', 'quiz', 'meeting', 'other'] &&
+             data.dueDate is string && data.dueDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.priority in ['low', 'medium', 'high'] &&
+             (!('course' in data) || (data.course is string && data.course.size() < 100)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 1000));
+    }
+
+    function isValidSickLeave(data) {
+      return data.studentId is string && data.studentId.size() > 0 &&
+             data.studentName is string && data.studentName.size() > 0 &&
+             data.reason is string && data.reason.size() > 0 && data.reason.size() < 1000 &&
+             data.startDate is string && data.startDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.endDate is string && data.endDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             (!('adminComment' in data) || (data.adminComment is string && data.adminComment.size() < 1000));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'student' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == resource.data.role || isAdmin());
+
+      match /important_deadlines/{deadlineId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && 
+                              request.resource.data.deadlineId is string &&
+                              request.resource.data.deadlineId.size() < 100;
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /classes/{classId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidClass(request.resource.data);
+      allow update: if isAdmin() && isValidClass(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /deadlines/{deadlineId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidDeadline(request.resource.data);
+      allow update: if isAdmin() && isValidDeadline(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /sick_leaves/{leaveId} {
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.studentId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid && 
+                    request.resource.data.status == 'pending' && isValidSickLeave(request.resource.data);
+      allow update: if isAdmin() && isValidSickLeave(request.resource.data);
+      allow delete: if isAdmin();
+    }
+    
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

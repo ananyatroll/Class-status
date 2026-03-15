@@ -1,0 +1,5 @@
+{
+  "name": "Class Status Tracker",
+  "description": "A real-time dashboard for students to track class cancellations, delays, and room changes throughout the week.",
+  "requestFramePermissions": []
+}

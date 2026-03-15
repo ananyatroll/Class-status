@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "ClassUpdate": {
+      "title": "Class Update",
+      "description": "Represents a status update for a specific class.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID for the class" },
+        "name": { "type": "string", "description": "Name of the class (e.g., Math 101)" },
+        "instructor": { "type": "string", "description": "Name of the instructor" },
+        "status": { 
+          "type": "string", 
+          "enum": ["normal", "canceled", "delayed", "moved"],
+          "description": "Current status of the class"
+        },
+        "details": { "type": "string", "description": "Additional details (e.g., new room number, delay duration)" },
+        "dayOfWeek": { 
+          "type": "string", 
+          "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+          "description": "Day of the week the class occurs"
+        },
+        "time": { "type": "string", "description": "Time of the class" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the status was last updated" },
+        "updatedBy": { "type": "string", "description": "UID of the admin who updated the status" }
+      },
+      "required": ["name", "status", "dayOfWeek", "time"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "admin"] },
+        "phoneNumber": { "type": "string" },
+        "studentId": { "type": "string" }
+      },
+      "required": ["uid", "role"]
+    },
+    "Deadline": {
+      "title": "Deadline",
+      "description": "Represents an upcoming academic task.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["assignment", "test", "quiz", "other"] },
+        "dueDate": { "type": "string", "format": "date" },
+        "course": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "type", "dueDate"]
+    },
+    "ImportantDeadline": {
+      "title": "Important Deadline",
+      "description": "A mapping to mark a deadline as important for a specific user.",
+      "type": "object",
+      "properties": {
+        "deadlineId": { "type": "string" },
+        "markedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deadlineId"]
+    },
+    "SickLeave": {
+      "title": "Sick Leave",
+      "description": "A request for sick leave submitted by a student.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "reason": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "adminComment": { "type": "string" }
+      },
+      "required": ["studentId", "reason", "startDate", "endDate", "status"]
+    }
+  },
+  "firestore": {
+    "/classes/{classId}": {
+      "schema": "ClassUpdate",
+      "description": "Collection of class status updates."
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and roles."
+    },
+    "/users/{userId}/important_deadlines/{deadlineId}": {
+      "schema": "ImportantDeadline",
+      "description": "User-specific important deadlines."
+    },
+    "/deadlines/{deadlineId}": {
+      "schema": "Deadline",
+      "description": "Upcoming academic deadlines."
+    },
+    "/sick_leaves/{leaveId}": {
+      "schema": "SickLeave",
+      "description": "Sick leave requests submitted by students."
+    }
+  }
+}
