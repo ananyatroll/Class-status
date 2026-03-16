@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   auth, 
   db, 
@@ -61,6 +61,7 @@ import {
   Send,
   Check,
   X,
+  Download,
   MessageSquare,
   LayoutGrid,
   ClipboardList
@@ -70,7 +71,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 // --- Types ---
 
-type ClassStatus = 'normal' | 'canceled' | 'delayed' | 'moved' | 'in-progress' | 'upcoming';
+type ClassStatus = 'normal' | 'canceled' | 'delayed' | 'moved' | 'in-progress' | 'upcoming' | 'fulfilled';
 
 interface ClassUpdate {
   id: string;
@@ -82,6 +83,7 @@ interface ClassUpdate {
   time: string;
   room?: string;
   duration?: string;
+  attendanceCode?: string;
   updatedAt: any;
   updatedBy: string;
 }
@@ -111,12 +113,25 @@ interface SickLeave {
   studentId: string;
   studentName: string;
   reason: string;
+  type: 'illness' | 'event';
   startDate: string;
   endDate: string;
   status: 'pending' | 'approved' | 'rejected';
   submittedAt: string;
   adminComment?: string;
 }
+
+interface AttendanceRecord {
+  id: string;
+  uid: string;
+  studentId: string;
+  studentName: string;
+  timestamp: string;
+  classId: string;
+  className: string;
+}
+
+const adminEmails = ['ananyabayable06@gmail.com', 'amira.ugr-1450-18@aau.edu.et', 'bereket.ugr-6706-18@aau.edu.et'];
 
 // --- Components ---
 
@@ -128,6 +143,7 @@ const StatusBadge = ({ status, duration }: { status: ClassStatus, duration?: str
     moved: { color: 'text-blue-600 bg-blue-50 border-blue-100', label: 'MOVED' },
     'in-progress': { color: 'text-emerald-600 bg-emerald-50 border-emerald-100', label: 'IN PROGRESS' },
     upcoming: { color: 'text-blue-600 bg-blue-50 border-blue-100', label: 'UPCOMING' },
+    fulfilled: { color: 'text-purple-600 bg-purple-50 border-purple-100', label: 'FULFILLED' },
   };
 
   const config = configs[status];
@@ -160,11 +176,12 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [classes, setClasses] = useState<ClassUpdate[]>([]);
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
-  const [prevClasses, setPrevClasses] = useState<Record<string, ClassStatus>>({});
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const lastClassesRef = useRef<Record<string, ClassStatus>>({});
+  const notifiedClassesRef = useRef<Set<string>>(new Set());
   const [editingClass, setEditingClass] = useState<ClassUpdate | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDay, setFilterDay] = useState('All');
@@ -191,11 +208,18 @@ export default function App() {
   const [deadlineSort, setDeadlineSort] = useState<'urgency' | 'date'>('urgency');
   const [importantDeadlineIds, setImportantDeadlineIds] = useState<Set<string>>(new Set());
   const [sickLeaves, setSickLeaves] = useState<SickLeave[]>([]);
+  const [sickLeaveSearch, setSickLeaveSearch] = useState('');
   const [isSubmittingSickLeave, setIsSubmittingSickLeave] = useState(false);
+  const [sickLeaveType, setSickLeaveType] = useState<'illness' | 'event'>('illness');
   const [sickLeaveReason, setSickLeaveReason] = useState('');
   const [sickLeaveStart, setSickLeaveStart] = useState('');
   const [sickLeaveEnd, setSickLeaveEnd] = useState('');
-  const [activeTab, setActiveTab] = useState<'status' | 'schedule' | 'deadlines' | 'profile' | 'sick-leave'>('status');
+
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [isSigningAttendance, setIsSigningAttendance] = useState(false);
+  const [selectedClassForAttendance, setSelectedClassForAttendance] = useState<string>('');
+  const [attendancePassword, setAttendancePassword] = useState('');
+  const [activeTab, setActiveTab] = useState<'status' | 'schedule' | 'deadlines' | 'profile' | 'sick-leave' | 'attendance'>('status');
 
   const days = ['All', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -213,6 +237,12 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (isAuthReady && user) {
+      requestNotificationPermission();
+    }
+  }, [isAuthReady, user]);
+
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -223,14 +253,16 @@ export default function App() {
           if (userDoc.exists()) {
             const data = userDoc.data() as UserProfile;
             // Ensure bootstrap admin always has admin role
-            if (currentUser.email === 'ananyabayable06@gmail.com' && data.role !== 'admin') {
+            if (adminEmails.includes(currentUser.email || '') && data.role !== 'admin') {
               data.role = 'admin';
               await updateDoc(doc(db, 'users', currentUser.uid), { role: 'admin' });
             }
             setProfile(data);
             setIsAdmin(data.role === 'admin');
+            if (data.studentId) setStudentId(data.studentId);
+            if (data.displayName) setDisplayName(data.displayName);
           } else {
-            const role = currentUser.email === 'ananyabayable06@gmail.com' ? 'admin' : 'student';
+            const role = adminEmails.includes(currentUser.email || '') ? 'admin' : 'student';
             const newProfile: UserProfile = {
               uid: currentUser.uid,
               email: currentUser.email || '',
@@ -249,6 +281,8 @@ export default function App() {
       } else {
         setProfile(null);
         setIsAdmin(false);
+        setStudentId('');
+        setDisplayName('');
       }
       setIsAuthReady(true);
       setLoading(false);
@@ -265,26 +299,77 @@ export default function App() {
       const newClasses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClassUpdate));
       
       // Check for changes to trigger notifications
-      if (classes.length > 0) {
-        newClasses.forEach(newClass => {
-          const oldStatus = prevClasses[newClass.id];
-          if (oldStatus && oldStatus !== newClass.status && newClass.status !== 'normal') {
-            triggerNotification(newClass);
-          }
-        });
-      }
+      newClasses.forEach(newClass => {
+        const oldStatus = lastClassesRef.current[newClass.id];
+        // Only trigger if we had a previous status (not initial load) and it changed to something non-normal
+        if (oldStatus !== undefined && oldStatus !== newClass.status && newClass.status !== 'normal') {
+          triggerNotification(newClass);
+        }
+      });
 
-      // Update previous states for next comparison
+      // Update ref and state
       const statusMap: Record<string, ClassStatus> = {};
       newClasses.forEach(c => statusMap[c.id] = c.status);
-      setPrevClasses(statusMap);
+      lastClassesRef.current = statusMap;
       setClasses(newClasses);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'classes');
     });
 
     return unsubscribe;
-  }, [isAuthReady, user, classes, prevClasses]);
+  }, [isAuthReady, user]);
+
+  // Upcoming Class Reminders
+  useEffect(() => {
+    if (!isAuthReady || !user || notificationPermission !== 'granted') return;
+
+    const checkReminders = () => {
+      const now = new Date();
+      const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+      const currentTime = now.getHours() * 60 + now.getMinutes();
+
+      // Reset notified classes if it's a new day
+      const todayStr = now.toDateString();
+      if ((window as any).lastReminderDate !== todayStr) {
+        notifiedClassesRef.current.clear();
+        (window as any).lastReminderDate = todayStr;
+      }
+
+      classes.forEach(c => {
+        if (c.dayOfWeek === currentDay && !notifiedClassesRef.current.has(c.id) && c.status === 'normal') {
+          try {
+            // Parse c.time (e.g., "10:00 AM")
+            const parts = c.time.split(' ');
+            if (parts.length !== 2) return;
+            
+            const [timeStr, modifier] = parts;
+            let [hours, minutes] = timeStr.split(':').map(Number);
+            if (modifier === 'PM' && hours < 12) hours += 12;
+            if (modifier === 'AM' && hours === 12) hours = 0;
+            
+            const classTime = hours * 60 + minutes;
+            const diff = classTime - currentTime;
+
+            // Notify if class starts in 15 minutes or less, but not if it already started
+            if (diff > 0 && diff <= 15) {
+              new Notification(`Upcoming Class: ${c.name}`, {
+                body: `Your class with ${c.instructor} starts in ${diff} minutes at ${c.time} in ${c.room || 'TBA'}.`,
+                icon: '/favicon.ico'
+              });
+              notifiedClassesRef.current.add(c.id);
+            }
+          } catch (e) {
+            console.error("Error parsing class time for reminder:", e);
+          }
+        }
+      });
+    };
+
+    const interval = setInterval(checkReminders, 60000); // Check every minute
+    checkReminders(); // Initial check
+
+    return () => clearInterval(interval);
+  }, [isAuthReady, user, classes, notificationPermission]);
 
   // Deadlines Listener
   useEffect(() => {
@@ -321,7 +406,8 @@ export default function App() {
     if (!isAuthReady || !user) return;
 
     let q;
-    if (isAdmin) {
+    const isHardcodedAdmin = adminEmails.includes(user.email || '');
+    if (isAdmin && isHardcodedAdmin) {
       q = query(collection(db, 'sick_leaves'), orderBy('submittedAt', 'desc'));
     } else {
       q = query(collection(db, 'sick_leaves'), where('studentId', '==', user.uid), orderBy('submittedAt', 'desc'));
@@ -341,6 +427,49 @@ export default function App() {
 
     return unsubscribe;
   }, [isAuthReady, user, isAdmin]);
+
+  // Attendance Listener
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+
+    let q;
+    const isHardcodedAdmin = adminEmails.includes(user.email || '');
+    if (isAdmin && isHardcodedAdmin) {
+      q = query(collection(db, 'attendance'), orderBy('timestamp', 'desc'));
+    } else {
+      q = query(collection(db, 'attendance'), where('uid', '==', user.uid), orderBy('timestamp', 'desc'));
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const attendanceData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
+      setAttendance(attendanceData);
+    }, (error) => {
+      console.error('Attendance Listener error:', error);
+      if (error instanceof Error && !error.message.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.LIST, 'attendance');
+      }
+    });
+
+    return unsubscribe;
+  }, [isAuthReady, user, isAdmin]);
+
+  const handleUpdateProfile = async () => {
+    if (!user || !profile) return;
+    if (!studentId || studentId.trim().length < 5) {
+      alert('Please enter a valid Student ID');
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        studentId: studentId,
+        displayName: displayName || profile.displayName
+      });
+      setProfile({ ...profile, studentId, displayName: displayName || profile.displayName });
+      alert('Profile updated successfully!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+    }
+  };
 
   const triggerNotification = (classUpdate: ClassUpdate) => {
     if (notificationPermission === 'granted') {
@@ -464,9 +593,10 @@ export default function App() {
     if (!user) return;
 
     const leaveData = {
-      studentId: user.uid,
+      studentId: profile?.studentId || user.uid,
       studentName: profile?.displayName || user.displayName || 'Student',
       reason: sickLeaveReason,
+      type: sickLeaveType,
       startDate: sickLeaveStart,
       endDate: sickLeaveEnd,
       status: 'pending',
@@ -482,6 +612,65 @@ export default function App() {
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'sick_leaves');
     }
+  };
+
+  const handleSignAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !profile || !selectedClassForAttendance) return;
+
+    const selectedClass = classes.find(c => c.id === selectedClassForAttendance);
+    if (!selectedClass) return;
+
+    if (selectedClass.attendanceCode && attendancePassword !== selectedClass.attendanceCode) {
+      alert('Incorrect attendance password. Please check with your instructor.');
+      return;
+    }
+
+    const attendanceRecord = {
+      uid: user.uid,
+      studentId: profile.studentId,
+      studentName: profile.displayName,
+      timestamp: new Date().toISOString(),
+      classId: selectedClass.id,
+      className: selectedClass.name
+    };
+
+    try {
+      await addDoc(collection(db, 'attendance'), attendanceRecord);
+      setIsSigningAttendance(false);
+      setSelectedClassForAttendance('');
+      setAttendancePassword('');
+      alert('Attendance signed successfully!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'attendance');
+    }
+  };
+
+  const handleExportAttendance = () => {
+    if (!isAdmin || attendance.length === 0) return;
+
+    const headers = ['Full Name', 'Student ID', 'Class Name', 'Time of Signage'];
+    const rows = attendance.map(record => [
+      record.studentName,
+      record.studentId,
+      record.className,
+      new Date(record.timestamp).toLocaleString()
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `attendance_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleUpdateSickLeaveStatus = async (id: string, status: 'approved' | 'rejected', comment?: string) => {
@@ -557,6 +746,8 @@ export default function App() {
       dayOfWeek: formData.get('dayOfWeek') as string,
       time: formData.get('time') as string,
       room: formData.get('room') as string,
+      duration: formData.get('duration') as string,
+      attendanceCode: formData.get('attendanceCode') as string,
       updatedAt: new Date().toISOString(),
       updatedBy: profile.uid,
     };
@@ -589,6 +780,14 @@ export default function App() {
     });
   }, [classes, searchQuery, filterDay]);
 
+  const filteredSickLeaves = useMemo(() => {
+    return sickLeaves.filter(leave => {
+      const matchesSearch = leave.studentName.toLowerCase().includes(sickLeaveSearch.toLowerCase()) || 
+                           new Date(leave.submittedAt).toLocaleDateString().includes(sickLeaveSearch);
+      return matchesSearch;
+    });
+  }, [sickLeaves, sickLeaveSearch]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50">
@@ -608,8 +807,13 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           className="max-w-md w-full bg-white p-10 rounded-3xl shadow-xl shadow-stone-200/50 border border-stone-100 text-center"
         >
-          <div className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-8 rotate-3 shadow-lg">
-            <Calendar className="text-white" size={40} />
+          <div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg overflow-hidden border border-stone-100">
+            <img 
+              src="https://lavender-working-anteater-929.mypinata.cloud/ipfs/bafybeibzd7vkkrlwhccxevkc7lpyezsbjm256xnkelsrin3xzt6atssdxy" 
+              alt="Class Status Logo" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <h1 className="text-4xl font-sans font-bold text-stone-900 mb-3 tracking-tight">Class Status</h1>
           <p className="text-stone-500 mb-10 leading-relaxed">
@@ -647,10 +851,11 @@ export default function App() {
                         type="text" 
                         value={studentId}
                         onChange={(e) => setStudentId(e.target.value)}
-                        placeholder="U12345678"
-                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                        placeholder="e.g. UGR/1234/15"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono"
                       />
                     </div>
+                    <p className="text-[10px] text-stone-400 italic">Format: UGR/****/**</p>
                   </div>
                 </div>
 
@@ -745,10 +950,11 @@ export default function App() {
                           required
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
-                          placeholder="U12345678"
-                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                          placeholder="e.g. UGR/1234/15"
+                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono"
                         />
                       </div>
+                      <p className="text-[10px] text-stone-400 italic">Format: UGR/****/**</p>
                     </div>
                   )}
                   <div className="space-y-2">
@@ -840,11 +1046,32 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-white text-stone-900 font-sans selection:bg-blue-600 selection:text-white pb-24">
+        {/* Missing Student ID Warning */}
+        {profile && profile.role === 'student' && !profile.studentId && activeTab !== 'profile' && (
+          <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
+                <AlertCircle size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-amber-900">Student ID Required</p>
+                <p className="text-xs text-amber-700">Please complete your profile to use all features.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setActiveTab('profile')}
+              className="px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-xl hover:bg-amber-700 transition-colors"
+            >
+              FIX NOW
+            </button>
+          </div>
+        )}
+
         {/* Conditional Header */}
         {activeTab === 'status' && (
           <header className="px-6 pt-8 pb-6">
             <div className="flex justify-between items-center mb-1">
-              <h1 className="text-3xl font-bold tracking-tight">Campus Live</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Class Status</h1>
               <div className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center text-xs font-bold text-stone-500">
                 {profile?.displayName?.split(' ').map(n => n[0]).join('') || 'JS'}
               </div>
@@ -901,12 +1128,14 @@ export default function App() {
           <header className="px-6 pt-8 pb-6">
             <div className="flex justify-between items-center mb-1">
               <h1 className="text-3xl font-bold tracking-tight">My Schedule</h1>
-              <button 
-                onClick={() => setIsAddingDeadline(true)}
-                className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200"
-              >
-                <Plus size={24} />
-              </button>
+              {isAdmin && (
+                <button 
+                  onClick={() => setIsAddingDeadline(true)}
+                  className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200"
+                >
+                  <Plus size={24} />
+                </button>
+              )}
             </div>
             <p className="text-stone-400 font-medium">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
           </header>
@@ -946,27 +1175,48 @@ export default function App() {
                 className="space-y-8"
               >
                 <section>
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Upcoming Today</h2>
-                    <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">5 TOTAL</span>
-                  </div>
+                  {(() => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const tomorrowDayName = tomorrow.toLocaleDateString('en-US', { weekday: 'long' });
+                    const tomorrowClasses = classes.filter(c => c.dayOfWeek === tomorrowDayName);
+                    return (
+                      <>
+                        <div className="flex justify-between items-center mb-6">
+                          <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Upcoming Tomorrow</h2>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                            {tomorrowClasses.length} TOTAL
+                          </span>
+                        </div>
 
-                  <div className="space-y-4">
-                    {classes.map((c) => (
-                      <div key={c.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-6 shadow-sm">
-                        <div className="text-center min-w-[60px]">
-                          <p className="text-sm font-bold text-stone-400">{c.time.split(' ')[0]}</p>
-                          <p className="text-[10px] font-bold text-stone-300">{c.time.split(' ')[1]}</p>
+                        <div className="space-y-4">
+                          {tomorrowClasses.length > 0 ? (
+                            tomorrowClasses.map((c) => (
+                              <div key={c.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-6 shadow-sm">
+                                <div className="text-center min-w-[60px]">
+                                  <p className="text-sm font-bold text-stone-400">{c.time.split(' ')[0]}</p>
+                                  <p className="text-[10px] font-bold text-stone-300 uppercase">{c.time.split(' ')[1]}</p>
+                                  {c.duration && (
+                                    <p className="text-[9px] font-bold text-blue-500 mt-1">{c.duration}</p>
+                                  )}
+                                </div>
+                                <div className="h-10 w-px bg-stone-100" />
+                                <div className="flex-1">
+                                  <h4 className="font-bold text-stone-900 mb-0.5">{c.name}</h4>
+                                  <p className="text-xs text-stone-400 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
+                                </div>
+                                <StatusBadge status={c.status} duration={c.duration} />
+                              </div>
+                            ))
+                          ) : (
+                            <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
+                              <p className="text-stone-400 text-sm font-medium">No classes scheduled for tomorrow.</p>
+                            </div>
+                          )}
                         </div>
-                        <div className="h-10 w-px bg-stone-100" />
-                        <div className="flex-1">
-                          <h4 className="font-bold text-stone-900 mb-0.5">{c.name}</h4>
-                          <p className="text-xs text-stone-400 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
-                        </div>
-                        <StatusBadge status={c.status} duration={c.duration} />
-                      </div>
-                    ))}
-                  </div>
+                      </>
+                    );
+                  })()}
                 </section>
               </motion.div>
             )}
@@ -995,20 +1245,54 @@ export default function App() {
                             <div className="flex flex-col items-end gap-2">
                               <StatusBadge status={i === 0 ? 'in-progress' : (c.status === 'canceled' ? 'canceled' : 'upcoming')} />
                               {isAdmin && (
-                                <button 
-                                  onClick={() => { setEditingClass(c); setShowAdminModal(true); }}
-                                  className="p-2 text-stone-400 hover:text-blue-600 transition-colors"
-                                >
-                                  <Edit2 size={16} />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  {(() => {
+                                    // Check if it's class time to reveal code
+                                    const now = new Date();
+                                    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+                                    if (c.dayOfWeek === currentDay) {
+                                      try {
+                                        const parts = c.time.split(' ');
+                                        const [t, mod] = parts;
+                                        let [h, m] = t.split(':').map(Number);
+                                        if (mod === 'PM' && h < 12) h += 12;
+                                        if (mod === 'AM' && h === 12) h = 0;
+                                        const classStart = h * 60 + m;
+                                        const current = now.getHours() * 60 + now.getMinutes();
+                                        // Reveal code 15 mins before and up to 3 hours after start
+                                        if (current >= classStart - 15 && current <= classStart + 180) {
+                                          return (
+                                            <div className="px-2 py-1 bg-purple-50 border border-purple-100 rounded-lg flex items-center gap-1.5">
+                                              <Lock size={10} className="text-purple-600" />
+                                              <span className="text-[10px] font-bold text-purple-700 font-mono">{c.attendanceCode}</span>
+                                            </div>
+                                          );
+                                        }
+                                      } catch (e) {}
+                                    }
+                                    return null;
+                                  })()}
+                                  <button 
+                                    onClick={() => { setEditingClass(c); setShowAdminModal(true); }}
+                                    className="p-2 text-stone-400 hover:text-blue-600 transition-colors"
+                                  >
+                                    <Edit2 size={16} />
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
-                          <div className="flex gap-6">
+                          <div className="flex flex-wrap gap-4 sm:gap-6">
                             <div className="flex items-center gap-2 text-stone-400">
                               <Clock size={16} />
                               <span className="text-xs font-bold">{c.time}</span>
                             </div>
+                            {c.duration && (
+                              <div className="flex items-center gap-2 text-stone-400">
+                                <History size={16} />
+                                <span className="text-xs font-bold">{c.duration}</span>
+                              </div>
+                            )}
                             <div className="flex items-center gap-2 text-stone-400">
                               <MapPin size={16} />
                               <span className="text-xs font-bold">{c.room || 'TBA'}</span>
@@ -1084,15 +1368,39 @@ export default function App() {
                   <h2 className="text-2xl font-bold mb-1">{profile?.displayName}</h2>
                   <p className="text-stone-400 font-medium mb-8">{profile?.email}</p>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-stone-50 p-4 rounded-2xl">
-                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Role</p>
-                      <p className="font-bold capitalize">{profile?.role}</p>
+                  <div className="space-y-6 text-left">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-stone-50 p-4 rounded-2xl">
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Role</p>
+                        <p className="font-bold capitalize">{profile?.role}</p>
+                      </div>
+                      <div className="bg-stone-50 p-4 rounded-2xl">
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Status</p>
+                        <p className="font-bold text-emerald-600">Active</p>
+                      </div>
                     </div>
-                    <div className="bg-stone-50 p-4 rounded-2xl">
-                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Status</p>
-                      <p className="font-bold text-emerald-600">Active</p>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Student ID</label>
+                      <div className="relative">
+                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                        <input 
+                          type="text" 
+                          value={studentId}
+                          onChange={(e) => setStudentId(e.target.value)}
+                          placeholder="UGR/****/**"
+                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono"
+                        />
+                      </div>
+                      <p className="text-[10px] text-stone-400 italic">Format: UGR/****/**</p>
                     </div>
+
+                    <button
+                      onClick={handleUpdateProfile}
+                      className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg shadow-black/10"
+                    >
+                      Save Profile
+                    </button>
                   </div>
                 </div>
 
@@ -1103,6 +1411,64 @@ export default function App() {
                   <LogOut size={20} />
                   Sign Out
                 </button>
+              </motion.div>
+            )}
+
+            {activeTab === 'attendance' && (
+              <motion.div
+                key="attendance"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Attendance Records</h2>
+                  {isAdmin && (
+                    <button
+                      onClick={handleExportAttendance}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100"
+                    >
+                      <Download size={14} />
+                      Export CSV
+                    </button>
+                  )}
+                </div>
+
+                {!isAdmin && (
+                  <button
+                    onClick={() => setIsSigningAttendance(true)}
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
+                  >
+                    <Check size={20} />
+                    Sign My Attendance
+                  </button>
+                )}
+
+                <div className="space-y-4">
+                  {attendance.length > 0 ? (
+                    attendance.map((record) => (
+                      <div key={record.id} className="bg-white border border-stone-100 rounded-3xl p-5 shadow-sm">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-bold text-stone-900">{record.studentName}</h4>
+                            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">{record.studentId}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-blue-600">{record.className}</p>
+                            <p className="text-[10px] text-stone-300">{new Date(record.timestamp).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-20 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
+                      <Check className="mx-auto text-stone-200 mb-4" size={48} />
+                      <h3 className="text-lg font-medium text-stone-900">No attendance records</h3>
+                      <p className="text-stone-500 text-sm">Records will appear here once students sign in.</p>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
 
@@ -1122,9 +1488,23 @@ export default function App() {
                     </p>
                   </div>
                 )}
+
+                {isAdmin && (
+                  <div className="relative mb-6">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                    <input 
+                      type="text" 
+                      value={sickLeaveSearch}
+                      onChange={(e) => setSickLeaveSearch(e.target.value)}
+                      placeholder="Search student name or date..."
+                      className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                    />
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-4">
-                  {sickLeaves.length > 0 ? (
-                    sickLeaves.map((leave) => (
+                  {filteredSickLeaves.length > 0 ? (
+                    filteredSickLeaves.map((leave) => (
                       <div
                         key={leave.id}
                         className="bg-white border border-stone-100 rounded-3xl p-5 shadow-sm"
@@ -1132,9 +1512,15 @@ export default function App() {
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="font-bold text-stone-900">{isAdmin ? leave.studentName : 'Sick Leave Request'}</h3>
-                            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
-                              Submitted {new Date(leave.submittedAt).toLocaleDateString()}
-                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
+                                Submitted {new Date(leave.submittedAt).toLocaleDateString()}
+                              </p>
+                              <span className="w-1 h-1 bg-stone-300 rounded-full" />
+                              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">
+                                {leave.type || 'Illness'}
+                              </p>
+                            </div>
                           </div>
                           <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                             leave.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
@@ -1218,6 +1604,7 @@ export default function App() {
               { id: 'status', label: 'STATUS', icon: Home },
               { id: 'schedule', label: 'SCHEDULE', icon: Calendar },
               { id: 'deadlines', label: 'ALERTS', icon: Bell },
+              { id: 'attendance', label: 'ATTENDANCE', icon: Check },
               { id: 'sick-leave', label: 'MEDICAL', icon: Stethoscope },
               { id: 'profile', label: 'PROFILE', icon: UserIcon },
             ].map((tab) => (
@@ -1357,101 +1744,123 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
                 className="relative bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden"
               >
-                <div className="p-8 border-b border-stone-100 flex justify-between items-center">
-                  <h2 className="text-2xl font-bold tracking-tight">
+                <div className="p-6 border-b border-stone-100 flex justify-between items-center">
+                  <h2 className="text-xl font-bold tracking-tight">
                     {editingClass ? 'Edit Class Status' : 'Add New Class'}
                   </h2>
                   <button 
                     onClick={() => setShowAdminModal(false)}
                     className="p-2 hover:bg-stone-100 rounded-xl transition-colors"
                   >
-                    <Plus className="rotate-45 text-stone-400" size={24} />
+                    <Plus className="rotate-45 text-stone-400" size={20} />
                   </button>
                 </div>
 
-                <form onSubmit={handleSaveClass} className="p-8 space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Class Name</label>
+                <form onSubmit={handleSaveClass} className="p-6 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Class Name</label>
                       <input 
                         name="name" 
                         required 
                         defaultValue={editingClass?.name}
-                        placeholder="e.g. Computer Science 101"
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-black transition-all"
+                        placeholder="e.g. CS 101"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Instructor</label>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Instructor</label>
                       <input 
                         name="instructor" 
                         defaultValue={editingClass?.instructor}
                         placeholder="e.g. Dr. Smith"
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-black transition-all"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Day of Week</label>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Day of Week</label>
                       <select 
                         name="dayOfWeek" 
                         required 
                         defaultValue={editingClass?.dayOfWeek || 'Monday'}
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-black transition-all appearance-none"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all appearance-none text-sm"
                       >
                         {days.filter(d => d !== 'All').map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Time</label>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Time</label>
                       <input 
                         name="time" 
                         required 
                         defaultValue={editingClass?.time}
                         placeholder="e.g. 10:00 AM"
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-black transition-all"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Room / Classroom</label>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Room</label>
                       <input 
                         name="room" 
                         defaultValue={editingClass?.room}
-                        placeholder="e.g. Room 402B"
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-black transition-all"
+                        placeholder="e.g. 402B"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Current Status</label>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Duration</label>
+                      <input 
+                        name="duration" 
+                        defaultValue={editingClass?.duration}
+                        placeholder="e.g. 1h 30m"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Status</label>
                       <select 
                         name="status" 
                         required 
                         defaultValue={editingClass?.status || 'normal'}
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-black transition-all appearance-none"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all appearance-none text-sm"
                       >
                         <option value="normal">Normal</option>
                         <option value="canceled">Canceled</option>
                         <option value="delayed">Delayed</option>
                         <option value="moved">Moved</option>
+                        <option value="fulfilled">Fulfilled</option>
                       </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Attendance Code (4 digits)</label>
+                      <input 
+                        name="attendanceCode" 
+                        required 
+                        maxLength={4}
+                        pattern="\d{4}"
+                        defaultValue={editingClass?.attendanceCode}
+                        placeholder="e.g. 1234"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm font-mono"
+                      />
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Additional Details</label>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Details</label>
                     <textarea 
                       name="details" 
                       defaultValue={editingClass?.details}
-                      placeholder="e.g. Room changed to B-204, or 15 minute delay due to technical issues."
-                      rows={3}
-                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-black transition-all resize-none"
+                      placeholder="Additional info..."
+                      rows={2}
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all resize-none text-sm"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-4 bg-black text-white rounded-2xl font-bold text-lg hover:bg-stone-800 transition-all shadow-lg shadow-black/10 active:scale-[0.98]"
+                    className="w-full py-3 bg-black text-white rounded-xl font-bold text-sm hover:bg-stone-800 transition-all shadow-lg shadow-black/10 active:scale-[0.98]"
                   >
-                    {editingClass ? 'Update Status' : 'Create Class Entry'}
+                    {editingClass ? 'Update Status' : 'Create Entry'}
                   </button>
                 </form>
               </motion.div>
@@ -1478,12 +1887,36 @@ export default function App() {
 
                 <form onSubmit={handleSubmitSickLeave} className="space-y-6">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Reason for Leave</label>
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Type of Request</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setSickLeaveType('illness')}
+                        className={`py-3 rounded-xl font-bold text-sm transition-all ${
+                          sickLeaveType === 'illness' ? 'bg-blue-600 text-white' : 'bg-stone-50 text-stone-400 border border-stone-200'
+                        }`}
+                      >
+                        Illness
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSickLeaveType('event')}
+                        className={`py-3 rounded-xl font-bold text-sm transition-all ${
+                          sickLeaveType === 'event' ? 'bg-blue-600 text-white' : 'bg-stone-50 text-stone-400 border border-stone-200'
+                        }`}
+                      >
+                        Life Event
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Reason / Details</label>
                     <textarea 
                       required
                       value={sickLeaveReason}
                       onChange={(e) => setSickLeaveReason(e.target.value)}
-                      placeholder="Briefly explain your medical reason..."
+                      placeholder={sickLeaveType === 'illness' ? "Briefly explain your medical reason..." : "Explain the life event..."}
                       rows={3}
                       className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all resize-none"
                     />
@@ -1539,6 +1972,73 @@ export default function App() {
             </div>
           </div>
         </footer>
+        {/* Attendance Sign-In Modal */}
+        <AnimatePresence>
+          {isSigningAttendance && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl"
+              >
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl font-bold">Sign Attendance</h2>
+                  <button onClick={() => setIsSigningAttendance(false)} className="p-2 hover:bg-stone-100 rounded-full">
+                    <Plus size={24} className="rotate-45" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSignAttendance} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Select Class</label>
+                    <select 
+                      required
+                      value={selectedClassForAttendance}
+                      onChange={(e) => setSelectedClassForAttendance(e.target.value)}
+                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all appearance-none"
+                    >
+                      <option value="">Choose a class...</option>
+                      {classes.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.time})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Attendance Password</label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                      <input 
+                        type="text" 
+                        required
+                        maxLength={4}
+                        value={attendancePassword}
+                        onChange={(e) => setAttendancePassword(e.target.value.replace(/\D/g, ''))}
+                        placeholder="Enter 4-digit code"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono tracking-[0.5em]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                    <p className="text-[10px] text-blue-400 uppercase font-bold mb-1">Your Details</p>
+                    <p className="text-sm font-bold text-blue-900">{profile?.displayName}</p>
+                    <p className="text-xs text-blue-700">{profile?.studentId}</p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg shadow-black/10 flex items-center justify-center gap-2"
+                  >
+                    <Check size={18} />
+                    Confirm Attendance
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </ErrorBoundary>
   );

@@ -44,11 +44,22 @@ service cloud.firestore {
     //   - studentId: string (required)
     //   - studentName: string (required)
     //   - reason: string (required)
+    //   - type: string (required, enum: illness, event)
     //   - startDate: string (required, YYYY-MM-DD)
     //   - endDate: string (required, YYYY-MM-DD)
     //   - status: string (required, enum: pending, approved, rejected)
-    //   - submittedAt: timestamp
+    //   - submittedAt: string (ISO date)
     //   - adminComment: string (optional)
+    //
+    // Collection: attendance
+    // Document ID: auto-generated
+    // Fields:
+    //   - uid: string (required, matches auth.uid)
+    //   - studentId: string (required, UGR ID)
+    //   - studentName: string (required)
+    //   - classId: string (required)
+    //   - className: string (required)
+    //   - timestamp: string (ISO date)
     //
     // ===============================================================
 
@@ -67,8 +78,10 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (request.auth.token.email == "ananyabayable06@gmail.com" ||
+         request.auth.token.email == "amira.ugr-1450-18@aau.edu.et" ||
+         request.auth.token.email == "bereket.ugr-6706-18@aau.edu.et" ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') == 'admin'));
     }
 
     function isValidEmail(email) {
@@ -119,10 +132,20 @@ service cloud.firestore {
       return data.studentId is string && data.studentId.size() > 0 &&
              data.studentName is string && data.studentName.size() > 0 &&
              data.reason is string && data.reason.size() > 0 && data.reason.size() < 1000 &&
+             data.type in ['illness', 'event'] &&
              data.startDate is string && data.startDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
              data.endDate is string && data.endDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
              data.status in ['pending', 'approved', 'rejected'] &&
              (!('adminComment' in data) || (data.adminComment is string && data.adminComment.size() < 1000));
+    }
+
+    function isValidAttendance(data) {
+      return data.uid == request.auth.uid &&
+             data.studentId is string && data.studentId.size() > 0 &&
+             data.studentName is string && data.studentName.size() > 0 &&
+             data.classId is string && data.classId.size() > 0 &&
+             data.className is string && data.className.size() > 0 &&
+             data.timestamp is string;
     }
 
     // ===============================================================
@@ -164,6 +187,13 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid && 
                     request.resource.data.status == 'pending' && isValidSickLeave(request.resource.data);
       allow update: if isAdmin() && isValidSickLeave(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /attendance/{recordId} {
+      allow read: if isAuthenticated() && (isAdmin() || (resource.data.uid == request.auth.uid));
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid && 
+                    isValidAttendance(request.resource.data);
       allow delete: if isAdmin();
     }
     
