@@ -222,34 +222,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'status' | 'schedule' | 'deadlines' | 'profile' | 'sick-leave' | 'attendance'>('status');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
-  // OTP States
-  const [otpStep, setOtpStep] = useState<'email' | 'otp'>('email');
-  const [generatedOtp, setGeneratedOtp] = useState<string>('');
-  const [enteredOtp, setEnteredOtp] = useState<string>('');
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [pendingAuthAction, setPendingAuthAction] = useState<'login' | 'signup' | null>(null);
-
-  const sendOtpEmail = async (targetEmail: string, otp: string) => {
-    try {
-      const response = await fetch('/api/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetEmail, otp }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to send email');
-      
-      if (data.demo) {
-        alert(`[DEMO] OTP sent to ${targetEmail}: ${otp}`);
-      } else {
-        // No alert needed for real success, or a subtle toast
-      }
-    } catch (error: any) {
-      console.error('Email send error:', error);
-      setAuthError(`Failed to send email: ${error.message}`);
-    }
-  };
-
   const days = ['All', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   // Request Notification Permission
@@ -560,18 +532,15 @@ export default function App() {
       return;
     }
     setAuthError(null);
+    setLoading(true);
     try {
-      // Generate 6-digit OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(otp);
-      setPendingAuthAction('signup');
-      setOtpStep('otp');
-      
-      // Send real email via backend
-      await sendOtpEmail(email, otp);
-      console.log(`[AUTH] OTP for ${email}: ${otp}`);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, { displayName });
+      requestNotificationPermission();
     } catch (error: any) {
       setAuthError(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -582,44 +551,14 @@ export default function App() {
       return;
     }
     setAuthError(null);
+    setLoading(true);
     try {
-      // Generate 6-digit OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(otp);
-      setPendingAuthAction('login');
-      setOtpStep('otp');
-      
-      await sendOtpEmail(email, otp);
-      console.log(`[AUTH] OTP for ${email}: ${otp}`);
-    } catch (error: any) {
-      setAuthError(error.message);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (enteredOtp !== generatedOtp) {
-      setAuthError('Invalid OTP. Please try again.');
-      return;
-    }
-
-    setIsVerifyingOtp(true);
-    setAuthError(null);
-    try {
-      if (pendingAuthAction === 'signup') {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(userCredential.user, { displayName });
-      } else if (pendingAuthAction === 'login') {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+      await signInWithEmailAndPassword(auth, email, password);
       requestNotificationPermission();
-      setOtpStep('email');
-      setGeneratedOtp('');
-      setEnteredOtp('');
     } catch (error: any) {
       setAuthError(error.message);
     } finally {
-      setIsVerifyingOtp(false);
+      setLoading(false);
     }
   };
 
@@ -927,75 +866,7 @@ export default function App() {
           </p>
 
           <AnimatePresence mode="wait">
-            {otpStep === 'otp' ? (
-              <motion.div
-                key="otp"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                <div className="text-left space-y-2">
-                  <h2 className="text-xl font-bold text-stone-900">Verify Email</h2>
-                  <p className="text-sm text-stone-500">Enter the 6-digit code sent to {email}</p>
-                </div>
-
-                <form onSubmit={handleVerifyOtp} className="space-y-6">
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
-                    <input 
-                      type="text" 
-                      required
-                      maxLength={6}
-                      value={enteredOtp}
-                      onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
-                      placeholder="000000"
-                      className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono tracking-[0.5em] text-center text-lg"
-                    />
-                  </div>
-
-                  {authError && (
-                    <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-xs text-left">
-                      <AlertCircle size={14} className="shrink-0" />
-                      {authError}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={isVerifyingOtp}
-                    className="w-full py-4 bg-black text-white rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-800 transition-all active:scale-[0.98] shadow-lg shadow-black/10 disabled:opacity-50"
-                  >
-                    {isVerifyingOtp ? 'Verifying...' : 'Verify & Continue'}
-                  </button>
-
-                  <div className="flex flex-col gap-3">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-                        setGeneratedOtp(otp);
-                        await sendOtpEmail(email, otp);
-                        console.log(`[AUTH] Resent OTP for ${email}: ${otp}`);
-                      }}
-                      className="w-full text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
-                    >
-                      Resend Code
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOtpStep('email');
-                        setAuthError(null);
-                      }}
-                      className="w-full text-sm font-bold text-stone-400 hover:text-stone-600 transition-colors"
-                    >
-                      Change Email
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            ) : authMode === 'selection' && (
+            {authMode === 'selection' && (
               <motion.div
                 key="selection"
                 initial={{ opacity: 0, x: -20 }}
