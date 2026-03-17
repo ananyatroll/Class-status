@@ -220,6 +220,35 @@ export default function App() {
   const [selectedClassForAttendance, setSelectedClassForAttendance] = useState<string>('');
   const [attendancePassword, setAttendancePassword] = useState('');
   const [activeTab, setActiveTab] = useState<'status' | 'schedule' | 'deadlines' | 'profile' | 'sick-leave' | 'attendance'>('status');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  
+  // OTP States
+  const [otpStep, setOtpStep] = useState<'email' | 'otp'>('email');
+  const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [enteredOtp, setEnteredOtp] = useState<string>('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [pendingAuthAction, setPendingAuthAction] = useState<'login' | 'signup' | null>(null);
+
+  const sendOtpEmail = async (targetEmail: string, otp: string) => {
+    try {
+      const response = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail, otp }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to send email');
+      
+      if (data.demo) {
+        alert(`[DEMO] OTP sent to ${targetEmail}: ${otp}`);
+      } else {
+        // No alert needed for real success, or a subtle toast
+      }
+    } catch (error: any) {
+      console.error('Email send error:', error);
+      setAuthError(`Failed to send email: ${error.message}`);
+    }
+  };
 
   const days = ['All', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -294,14 +323,23 @@ export default function App() {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
-    const q = query(collection(db, 'classes'), orderBy('dayOfWeek'), orderBy('time'));
+    const q = query(collection(db, 'classes'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const newClasses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClassUpdate));
       
+      // Sort in memory to avoid index requirements
+      const sortedClasses = [...newClasses].sort((a, b) => {
+        const dayOrder: Record<string, number> = {
+          'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7
+        };
+        const dayDiff = (dayOrder[a.dayOfWeek] || 0) - (dayOrder[b.dayOfWeek] || 0);
+        if (dayDiff !== 0) return dayDiff;
+        return a.time.localeCompare(b.time);
+      });
+
       // Check for changes to trigger notifications
-      newClasses.forEach(newClass => {
+      sortedClasses.forEach(newClass => {
         const oldStatus = lastClassesRef.current[newClass.id];
-        // Only trigger if we had a previous status (not initial load) and it changed to something non-normal
         if (oldStatus !== undefined && oldStatus !== newClass.status && newClass.status !== 'normal') {
           triggerNotification(newClass);
         }
@@ -309,10 +347,11 @@ export default function App() {
 
       // Update ref and state
       const statusMap: Record<string, ClassStatus> = {};
-      newClasses.forEach(c => statusMap[c.id] = c.status);
+      sortedClasses.forEach(c => statusMap[c.id] = c.status);
       lastClassesRef.current = statusMap;
-      setClasses(newClasses);
+      setClasses(sortedClasses);
     }, (error) => {
+      console.error('Classes Listener error:', error);
       handleFirestoreError(error, OperationType.LIST, 'classes');
     });
 
@@ -508,11 +547,29 @@ export default function App() {
 
   const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email || !password || !displayName) {
+      setAuthError('Please fill in all fields');
+      return;
+    }
+    if (password.length < 6) {
+      setAuthError('Password must be at least 6 characters');
+      return;
+    }
+    if (!email.includes('@')) {
+      setAuthError('Please enter a valid email address');
+      return;
+    }
     setAuthError(null);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(userCredential.user, { displayName });
-      requestNotificationPermission();
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      setGeneratedOtp(otp);
+      setPendingAuthAction('signup');
+      setOtpStep('otp');
+      
+      // Send real email via backend
+      await sendOtpEmail(email, otp);
+      console.log(`[AUTH] OTP for ${email}: ${otp}`);
     } catch (error: any) {
       setAuthError(error.message);
     }
@@ -520,12 +577,49 @@ export default function App() {
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email || !password) {
+      setAuthError('Please enter email and password');
+      return;
+    }
     setAuthError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      requestNotificationPermission();
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      setGeneratedOtp(otp);
+      setPendingAuthAction('login');
+      setOtpStep('otp');
+      
+      await sendOtpEmail(email, otp);
+      console.log(`[AUTH] OTP for ${email}: ${otp}`);
     } catch (error: any) {
       setAuthError(error.message);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (enteredOtp !== generatedOtp) {
+      setAuthError('Invalid OTP. Please try again.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    setAuthError(null);
+    try {
+      if (pendingAuthAction === 'signup') {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCredential.user, { displayName });
+      } else if (pendingAuthAction === 'login') {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+      requestNotificationPermission();
+      setOtpStep('email');
+      setGeneratedOtp('');
+      setEnteredOtp('');
+    } catch (error: any) {
+      setAuthError(error.message);
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -617,6 +711,11 @@ export default function App() {
   const handleSignAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !profile || !selectedClassForAttendance) return;
+
+    if (user.isAnonymous) {
+      alert('Guest users cannot sign attendance. Please sign in with an account.');
+      return;
+    }
 
     const selectedClass = classes.find(c => c.id === selectedClassForAttendance);
     if (!selectedClass) return;
@@ -735,7 +834,10 @@ export default function App() {
 
   const handleSaveClass = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!profile || profile.role !== 'admin') return;
+    if (!profile || profile.role !== 'admin') {
+      console.error('Unauthorized: Only admins can save classes');
+      return;
+    }
 
     const formData = new FormData(e.currentTarget);
     const classData = {
@@ -752,12 +854,16 @@ export default function App() {
       updatedBy: profile.uid,
     };
 
+    console.log('Saving class data:', classData);
+
     try {
       const id = editingClass?.id || doc(collection(db, 'classes')).id;
       await setDoc(doc(db, 'classes', id), { ...classData, id });
+      console.log('Class saved successfully with ID:', id);
       setShowAdminModal(false);
       setEditingClass(null);
     } catch (error) {
+      console.error('Error saving class:', error);
       handleFirestoreError(error, OperationType.WRITE, 'classes');
     }
   };
@@ -821,7 +927,75 @@ export default function App() {
           </p>
 
           <AnimatePresence mode="wait">
-            {authMode === 'selection' && (
+            {otpStep === 'otp' ? (
+              <motion.div
+                key="otp"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="text-left space-y-2">
+                  <h2 className="text-xl font-bold text-stone-900">Verify Email</h2>
+                  <p className="text-sm text-stone-500">Enter the 6-digit code sent to {email}</p>
+                </div>
+
+                <form onSubmit={handleVerifyOtp} className="space-y-6">
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                    <input 
+                      type="text" 
+                      required
+                      maxLength={6}
+                      value={enteredOtp}
+                      onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                      placeholder="000000"
+                      className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono tracking-[0.5em] text-center text-lg"
+                    />
+                  </div>
+
+                  {authError && (
+                    <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-xs text-left">
+                      <AlertCircle size={14} className="shrink-0" />
+                      {authError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isVerifyingOtp}
+                    className="w-full py-4 bg-black text-white rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-800 transition-all active:scale-[0.98] shadow-lg shadow-black/10 disabled:opacity-50"
+                  >
+                    {isVerifyingOtp ? 'Verifying...' : 'Verify & Continue'}
+                  </button>
+
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+                        setGeneratedOtp(otp);
+                        await sendOtpEmail(email, otp);
+                        console.log(`[AUTH] Resent OTP for ${email}: ${otp}`);
+                      }}
+                      className="w-full text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      Resend Code
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpStep('email');
+                        setAuthError(null);
+                      }}
+                      className="w-full text-sm font-bold text-stone-400 hover:text-stone-600 transition-colors"
+                    >
+                      Change Email
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            ) : authMode === 'selection' && (
               <motion.div
                 key="selection"
                 initial={{ opacity: 0, x: -20 }}
@@ -1099,24 +1273,29 @@ export default function App() {
               </div>
             </div>
             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-              {Array.from({ length: 6 }, (_, i) => {
+              {Array.from({ length: 7 }, (_, i) => {
                 const today = new Date();
                 const day = today.getDay();
                 const diff = today.getDate() - day + (day === 0 ? -6 : 1);
                 const monday = new Date(new Date().setDate(diff));
                 const d = new Date(monday);
                 d.setDate(monday.getDate() + i);
-                const isActive = d.toDateString() === new Date().toDateString();
+                const isSelected = d.toDateString() === selectedDate.toDateString();
+                const isToday = d.toDateString() === new Date().toDateString();
                 
                 return (
                   <button
                     key={i}
+                    onClick={() => setSelectedDate(new Date(d))}
                     className={`flex flex-col items-center justify-center min-w-[64px] h-20 rounded-2xl transition-all ${
-                      isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-stone-400 font-bold'
+                      isSelected ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white border border-stone-100 text-stone-400 font-bold'
                     }`}
                   >
-                    <span className="text-[10px] mb-1">{d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}</span>
+                    <span className={`text-[10px] mb-1 ${isSelected ? 'text-blue-100' : 'text-stone-300'}`}>
+                      {d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}
+                    </span>
                     <span className="text-xl">{d.getDate()}</span>
+                    {isToday && !isSelected && <div className="w-1 h-1 bg-blue-600 rounded-full mt-1" />}
                   </button>
                 );
               })}
@@ -1176,45 +1355,81 @@ export default function App() {
               >
                 <section>
                   {(() => {
+                    const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+                    const todayClasses = classes.filter(c => c.dayOfWeek === todayName);
+                    
                     const tomorrow = new Date();
                     tomorrow.setDate(tomorrow.getDate() + 1);
                     const tomorrowDayName = tomorrow.toLocaleDateString('en-US', { weekday: 'long' });
                     const tomorrowClasses = classes.filter(c => c.dayOfWeek === tomorrowDayName);
+                    
                     return (
-                      <>
-                        <div className="flex justify-between items-center mb-6">
-                          <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Upcoming Tomorrow</h2>
-                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                            {tomorrowClasses.length} TOTAL
-                          </span>
+                      <div className="space-y-8">
+                        <div>
+                          <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Today's Schedule</h2>
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                              {todayClasses.length} TOTAL
+                            </span>
+                          </div>
+                          <div className="space-y-4">
+                            {todayClasses.length > 0 ? (
+                              todayClasses.map((c) => (
+                                <div key={c.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-6 shadow-sm">
+                                  <div className="text-center min-w-[60px]">
+                                    <p className="text-sm font-bold text-stone-400">{c.time.split(' ')[0]}</p>
+                                    <p className="text-[10px] font-bold text-stone-300 uppercase">{c.time.split(' ')[1]}</p>
+                                    {c.duration && (
+                                      <p className="text-[9px] font-bold text-blue-500 mt-1">{c.duration}</p>
+                                    )}
+                                  </div>
+                                  <div className="h-10 w-px bg-stone-100" />
+                                  <div className="flex-1">
+                                    <h4 className="font-bold text-stone-900 mb-0.5">{c.name}</h4>
+                                    <p className="text-xs text-stone-400 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
+                                  </div>
+                                  <StatusBadge status={c.status} duration={c.duration} />
+                                </div>
+                              ))
+                            ) : (
+                              <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
+                                <p className="text-stone-400 text-sm font-medium">No classes scheduled for today.</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="space-y-4">
-                          {tomorrowClasses.length > 0 ? (
-                            tomorrowClasses.map((c) => (
-                              <div key={c.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-6 shadow-sm">
-                                <div className="text-center min-w-[60px]">
-                                  <p className="text-sm font-bold text-stone-400">{c.time.split(' ')[0]}</p>
-                                  <p className="text-[10px] font-bold text-stone-300 uppercase">{c.time.split(' ')[1]}</p>
-                                  {c.duration && (
-                                    <p className="text-[9px] font-bold text-blue-500 mt-1">{c.duration}</p>
-                                  )}
+                        <div>
+                          <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Upcoming Tomorrow</h2>
+                            <span className="text-[10px] font-bold text-stone-400 bg-stone-100 px-2 py-1 rounded-lg">
+                              {tomorrowClasses.length} TOTAL
+                            </span>
+                          </div>
+                          <div className="space-y-4">
+                            {tomorrowClasses.length > 0 ? (
+                              tomorrowClasses.map((c) => (
+                                <div key={c.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-6 shadow-sm opacity-70">
+                                  <div className="text-center min-w-[60px]">
+                                    <p className="text-sm font-bold text-stone-400">{c.time.split(' ')[0]}</p>
+                                    <p className="text-[10px] font-bold text-stone-300 uppercase">{c.time.split(' ')[1]}</p>
+                                  </div>
+                                  <div className="h-10 w-px bg-stone-100" />
+                                  <div className="flex-1">
+                                    <h4 className="font-bold text-stone-900 mb-0.5">{c.name}</h4>
+                                    <p className="text-xs text-stone-400 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
+                                  </div>
+                                  <StatusBadge status={c.status} duration={c.duration} />
                                 </div>
-                                <div className="h-10 w-px bg-stone-100" />
-                                <div className="flex-1">
-                                  <h4 className="font-bold text-stone-900 mb-0.5">{c.name}</h4>
-                                  <p className="text-xs text-stone-400 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
-                                </div>
-                                <StatusBadge status={c.status} duration={c.duration} />
+                              ))
+                            ) : (
+                              <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
+                                <p className="text-stone-400 text-sm font-medium">No classes scheduled for tomorrow.</p>
                               </div>
-                            ))
-                          ) : (
-                            <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
-                              <p className="text-stone-400 text-sm font-medium">No classes scheduled for tomorrow.</p>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
-                      </>
+                      </div>
                     );
                   })()}
                 </section>
@@ -1230,78 +1445,96 @@ export default function App() {
                 className="space-y-8"
               >
                 <section>
-                  <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest mb-6">Today's Sessions</h2>
-                  <div className="relative pl-8 space-y-6">
-                    <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-stone-100" />
-                    {classes.map((c, i) => (
-                      <div key={c.id} className="relative">
-                        <div className={`absolute -left-[29px] top-2 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${i === 0 ? 'bg-blue-600' : 'bg-stone-200'}`} />
-                        <div className="bg-white border border-stone-100 rounded-3xl p-6 shadow-sm">
-                          <div className="flex justify-between items-start mb-4">
-                            <div className="flex-1">
-                              <h4 className="text-xl font-bold text-stone-900 mb-1">{c.name}</h4>
-                              <p className="text-sm text-stone-400 font-medium">{c.instructor}</p>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <StatusBadge status={i === 0 ? 'in-progress' : (c.status === 'canceled' ? 'canceled' : 'upcoming')} />
-                              {isAdmin && (
-                                <div className="flex items-center gap-2">
-                                  {(() => {
-                                    // Check if it's class time to reveal code
-                                    const now = new Date();
-                                    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
-                                    if (c.dayOfWeek === currentDay) {
-                                      try {
-                                        const parts = c.time.split(' ');
-                                        const [t, mod] = parts;
-                                        let [h, m] = t.split(':').map(Number);
-                                        if (mod === 'PM' && h < 12) h += 12;
-                                        if (mod === 'AM' && h === 12) h = 0;
-                                        const classStart = h * 60 + m;
-                                        const current = now.getHours() * 60 + now.getMinutes();
-                                        // Reveal code 15 mins before and up to 3 hours after start
-                                        if (current >= classStart - 15 && current <= classStart + 180) {
-                                          return (
-                                            <div className="px-2 py-1 bg-purple-50 border border-purple-100 rounded-lg flex items-center gap-1.5">
-                                              <Lock size={10} className="text-purple-600" />
-                                              <span className="text-[10px] font-bold text-purple-700 font-mono">{c.attendanceCode}</span>
-                                            </div>
-                                          );
-                                        }
-                                      } catch (e) {}
-                                    }
-                                    return null;
-                                  })()}
-                                  <button 
-                                    onClick={() => { setEditingClass(c); setShowAdminModal(true); }}
-                                    className="p-2 text-stone-400 hover:text-blue-600 transition-colors"
-                                  >
-                                    <Edit2 size={16} />
-                                  </button>
+                  {(() => {
+                    const selectedDayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+                    const dayClasses = classes.filter(c => c.dayOfWeek === selectedDayName);
+                    const isToday = selectedDate.toDateString() === new Date().toDateString();
+
+                    return (
+                      <>
+                        <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest mb-6">
+                          {isToday ? "Today's Sessions" : `${selectedDayName}'s Sessions`}
+                        </h2>
+                        <div className="relative pl-8 space-y-6">
+                          <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-stone-100" />
+                          {dayClasses.length > 0 ? (
+                            dayClasses.map((c, i) => (
+                              <div key={c.id} className="relative">
+                                <div className={`absolute -left-[29px] top-2 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${isToday && i === 0 ? 'bg-blue-600' : 'bg-stone-200'}`} />
+                                <div className="bg-white border border-stone-100 rounded-3xl p-6 shadow-sm">
+                                  <div className="flex justify-between items-start mb-4">
+                                    <div className="flex-1">
+                                      <h4 className="text-xl font-bold text-stone-900 mb-1">{c.name}</h4>
+                                      <p className="text-sm text-stone-400 font-medium">{c.instructor}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2">
+                                      <StatusBadge status={isToday && i === 0 ? 'in-progress' : (c.status === 'canceled' ? 'canceled' : 'upcoming')} />
+                                      {isAdmin && (
+                                        <div className="flex items-center gap-2">
+                                          {(() => {
+                                            // Check if it's class time to reveal code
+                                            const now = new Date();
+                                            const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+                                            if (c.dayOfWeek === currentDay) {
+                                              try {
+                                                const parts = c.time.split(' ');
+                                                const [t, mod] = parts;
+                                                let [h, m] = t.split(':').map(Number);
+                                                if (mod === 'PM' && h < 12) h += 12;
+                                                if (mod === 'AM' && h === 12) h = 0;
+                                                const classStart = h * 60 + m;
+                                                const current = now.getHours() * 60 + now.getMinutes();
+                                                // Reveal code 15 mins before and up to 3 hours after start
+                                                if (current >= classStart - 15 && current <= classStart + 180) {
+                                                  return (
+                                                    <div className="px-2 py-1 bg-purple-50 border border-purple-100 rounded-lg flex items-center gap-1.5">
+                                                      <Lock size={10} className="text-purple-600" />
+                                                      <span className="text-[10px] font-bold text-purple-700 font-mono">{c.attendanceCode}</span>
+                                                    </div>
+                                                  );
+                                                }
+                                              } catch (e) {}
+                                            }
+                                            return null;
+                                          })()}
+                                          <button 
+                                            onClick={() => { setEditingClass(c); setShowAdminModal(true); }}
+                                            className="p-2 text-stone-400 hover:text-blue-600 transition-colors"
+                                          >
+                                            <Edit2 size={16} />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap gap-4 sm:gap-6">
+                                    <div className="flex items-center gap-2 text-stone-400">
+                                      <Clock size={16} />
+                                      <span className="text-xs font-bold">{c.time}</span>
+                                    </div>
+                                    {c.duration && (
+                                      <div className="flex items-center gap-2 text-stone-400">
+                                        <History size={16} />
+                                        <span className="text-xs font-bold">{c.duration}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-2 text-stone-400">
+                                      <MapPin size={16} />
+                                      <span className="text-xs font-bold">{c.room || 'TBA'}</span>
+                                    </div>
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-4 sm:gap-6">
-                            <div className="flex items-center gap-2 text-stone-400">
-                              <Clock size={16} />
-                              <span className="text-xs font-bold">{c.time}</span>
-                            </div>
-                            {c.duration && (
-                              <div className="flex items-center gap-2 text-stone-400">
-                                <History size={16} />
-                                <span className="text-xs font-bold">{c.duration}</span>
                               </div>
-                            )}
-                            <div className="flex items-center gap-2 text-stone-400">
-                              <MapPin size={16} />
-                              <span className="text-xs font-bold">{c.room || 'TBA'}</span>
+                            ))
+                          ) : (
+                            <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
+                              <p className="text-stone-400 text-sm font-medium">No classes scheduled for this day.</p>
                             </div>
-                          </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      </>
+                    );
+                  })()}
                 </section>
               </motion.div>
             )}
@@ -1437,8 +1670,18 @@ export default function App() {
 
                 {!isAdmin && (
                   <button
-                    onClick={() => setIsSigningAttendance(true)}
-                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
+                    onClick={() => {
+                      if (user?.isAnonymous) {
+                        alert('Guest users cannot sign attendance. Please sign in with an account.');
+                      } else {
+                        setIsSigningAttendance(true);
+                      }
+                    }}
+                    className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${
+                      user?.isAnonymous 
+                        ? 'bg-stone-100 text-stone-400 cursor-not-allowed' 
+                        : 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700'
+                    }`}
                   >
                     <Check size={20} />
                     Sign My Attendance
