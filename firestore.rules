@@ -99,7 +99,7 @@ service cloud.firestore {
 
     function isValidClass(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.status in ['normal', 'canceled', 'delayed', 'moved'] &&
+             data.status in ['normal', 'canceled', 'delayed', 'moved', 'in-progress', 'upcoming', 'fulfilled'] &&
              data.dayOfWeek in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] &&
              data.time is string && data.time.size() > 0 && data.time.size() < 50 &&
              (!('instructor' in data) || (data.instructor is string && data.instructor.size() < 100)) &&

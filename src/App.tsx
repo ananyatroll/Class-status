@@ -64,7 +64,9 @@ import {
   Download,
   MessageSquare,
   LayoutGrid,
-  ClipboardList
+  ClipboardList,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -137,13 +139,13 @@ const adminEmails = ['ananyabayable06@gmail.com', 'amira.ugr-1450-18@aau.edu.et'
 
 const StatusBadge = ({ status, duration }: { status: ClassStatus, duration?: string }) => {
   const configs = {
-    normal: { color: 'text-emerald-600 bg-emerald-50 border-emerald-100', label: 'NORMAL' },
-    canceled: { color: 'text-red-600 bg-red-50 border-red-100', label: 'CANCELED' },
-    delayed: { color: 'text-amber-600 bg-amber-50 border-amber-100', label: `DELAYED${duration ? ` (${duration})` : ''}` },
-    moved: { color: 'text-blue-600 bg-blue-50 border-blue-100', label: 'MOVED' },
-    'in-progress': { color: 'text-emerald-600 bg-emerald-50 border-emerald-100', label: 'IN PROGRESS' },
-    upcoming: { color: 'text-blue-600 bg-blue-50 border-blue-100', label: 'UPCOMING' },
-    fulfilled: { color: 'text-purple-600 bg-purple-50 border-purple-100', label: 'FULFILLED' },
+    normal: { color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30', label: 'NORMAL' },
+    canceled: { color: 'text-red-600 dark:text-red-400 bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-900/30', label: 'CANCELED' },
+    delayed: { color: 'text-amber-600 dark:text-amber-400 bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30', label: `DELAYED${duration ? ` (${duration})` : ''}` },
+    moved: { color: 'text-blue-600 dark:text-blue-400 bg-blue-50 border-blue-100 dark:bg-blue-900/20 dark:border-blue-900/30', label: 'MOVED' },
+    'in-progress': { color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30', label: 'IN PROGRESS' },
+    upcoming: { color: 'text-blue-600 dark:text-blue-400 bg-blue-50 border-blue-100 dark:bg-blue-900/20 dark:border-blue-900/30', label: 'UPCOMING' },
+    fulfilled: { color: 'text-purple-600 dark:text-purple-400 bg-purple-50 border-purple-100 dark:bg-purple-900/20 dark:border-purple-900/30', label: 'FULFILLED' },
   };
 
   const config = configs[status];
@@ -157,9 +159,9 @@ const StatusBadge = ({ status, duration }: { status: ClassStatus, duration?: str
 
 const PriorityBadge = ({ priority }: { priority: 'low' | 'medium' | 'high' }) => {
   const configs = {
-    low: { color: 'text-emerald-500', label: 'LOW' },
-    medium: { color: 'text-amber-500', label: 'MEDIUM' },
-    high: { color: 'text-red-500', label: 'HIGH' },
+    low: { color: 'text-emerald-500 dark:text-emerald-400', label: 'LOW' },
+    medium: { color: 'text-amber-500 dark:text-amber-400', label: 'MEDIUM' },
+    high: { color: 'text-red-500 dark:text-red-400', label: 'HIGH' },
   };
 
   const config = configs[priority];
@@ -216,13 +218,42 @@ export default function App() {
   const [sickLeaveEnd, setSickLeaveEnd] = useState('');
 
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceFilterSubject, setAttendanceFilterSubject] = useState<string>('All');
+  const [attendanceFilterDate, setAttendanceFilterDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isSigningAttendance, setIsSigningAttendance] = useState(false);
   const [selectedClassForAttendance, setSelectedClassForAttendance] = useState<string>('');
   const [attendancePassword, setAttendancePassword] = useState('');
   const [activeTab, setActiveTab] = useState<'status' | 'schedule' | 'deadlines' | 'profile' | 'sick-leave' | 'attendance'>('status');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') === 'dark' || 
+        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  });
   
   const days = ['All', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  const toggleDarkMode = () => {
+    console.log('Toggling dark mode from:', isDarkMode);
+    setIsDarkMode(!isDarkMode);
+  };
+
+  // Dark Mode Effect
+  useEffect(() => {
+    console.log('Applying dark mode:', isDarkMode);
+    const root = window.document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+      document.body.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      document.body.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
 
   // Request Notification Permission
   useEffect(() => {
@@ -835,10 +866,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+      <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950 transition-colors duration-300">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-stone-200 border-t-black rounded-full animate-spin"></div>
-          <p className="text-stone-500 font-sans text-sm animate-pulse">Initializing Status Tracker...</p>
+          <div className="w-12 h-12 border-4 border-stone-200 dark:border-stone-800 border-t-black dark:border-t-stone-100 rounded-full animate-spin"></div>
+          <p className="text-stone-500 dark:text-stone-400 font-sans text-sm animate-pulse">Initializing Status Tracker...</p>
         </div>
       </div>
     );
@@ -846,13 +877,21 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-stone-50 dark:bg-stone-950 flex flex-col items-center justify-center p-4 transition-colors duration-300">
+        <div className="absolute top-6 right-6">
+          <button
+            onClick={toggleDarkMode}
+            className="p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400 shadow-sm hover:shadow-md transition-all"
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+        </div>
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-white p-10 rounded-3xl shadow-xl shadow-stone-200/50 border border-stone-100 text-center"
+          className="max-w-md w-full bg-white dark:bg-stone-900 p-10 rounded-3xl shadow-xl shadow-stone-200/50 dark:shadow-black/50 border border-stone-100 dark:border-stone-800 text-center"
         >
-          <div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg overflow-hidden border border-stone-100">
+          <div className="w-24 h-24 bg-white dark:bg-stone-800 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg overflow-hidden border border-stone-100 dark:border-stone-700">
             <img 
               src="https://lavender-working-anteater-929.mypinata.cloud/ipfs/bafybeibzd7vkkrlwhccxevkc7lpyezsbjm256xnkelsrin3xzt6atssdxy" 
               alt="Class Status Logo" 
@@ -860,8 +899,8 @@ export default function App() {
               referrerPolicy="no-referrer"
             />
           </div>
-          <h1 className="text-4xl font-sans font-bold text-stone-900 mb-3 tracking-tight">Class Status</h1>
-          <p className="text-stone-500 mb-10 leading-relaxed">
+          <h1 className="text-4xl font-sans font-bold text-stone-900 dark:text-stone-100 mb-3 tracking-tight">Class Status</h1>
+          <p className="text-stone-500 dark:text-stone-400 mb-10 leading-relaxed">
             Stay updated with real-time class cancellations, delays, and room changes.
           </p>
 
@@ -878,69 +917,69 @@ export default function App() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Full Name</label>
                     <div className="relative">
-                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                       <input 
                         type="text" 
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
                         placeholder="John Doe"
-                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Student ID</label>
                     <div className="relative">
-                      <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                      <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                       <input 
                         type="text" 
                         value={studentId}
                         onChange={(e) => setStudentId(e.target.value)}
                         placeholder="e.g. UGR/1234/15"
-                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
                       />
                     </div>
-                    <p className="text-[10px] text-stone-400 italic">Format: UGR/****/**</p>
+                    <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/****/**</p>
                   </div>
                 </div>
 
                 <button
                   onClick={handleLogin}
-                  className="w-full py-4 bg-black text-white rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-800 transition-all active:scale-[0.98] shadow-lg shadow-black/10"
+                  className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-800 dark:hover:bg-stone-200 transition-all active:scale-[0.98] shadow-lg shadow-black/10 dark:shadow-black/50"
                 >
                   <UserIcon size={20} />
                   Sign in with Google
                 </button>
 
                 {authError && (
-                  <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-xs text-left">
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center gap-2 text-red-600 dark:text-red-400 text-xs text-left">
                     <AlertCircle size={14} className="shrink-0" />
                     {authError}
                   </div>
                 )}
 
                 <div className="flex items-center gap-4 py-2">
-                  <div className="h-px bg-stone-200 flex-1" />
+                  <div className="h-px bg-stone-200 dark:bg-stone-800 flex-1" />
                   <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">or</span>
-                  <div className="h-px bg-stone-200 flex-1" />
+                  <div className="h-px bg-stone-200 dark:bg-stone-800 flex-1" />
                 </div>
                 <button
                   onClick={() => setAuthMode('email-login')}
-                  className="w-full py-4 bg-white text-stone-900 border border-stone-200 rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-50 transition-all active:scale-[0.98]"
+                  className="w-full py-4 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 border border-stone-200 dark:border-stone-800 rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800 transition-all active:scale-[0.98]"
                 >
                   <Mail size={20} />
                   Continue with Email
                 </button>
 
                 <div className="flex items-center gap-4 py-2">
-                  <div className="h-px bg-stone-100 flex-1" />
-                  <span className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">or</span>
-                  <div className="h-px bg-stone-100 flex-1" />
+                  <div className="h-px bg-stone-100 dark:bg-stone-800 flex-1" />
+                  <span className="text-[10px] font-bold text-stone-300 dark:text-stone-700 uppercase tracking-widest">or</span>
+                  <div className="h-px bg-stone-100 dark:bg-stone-800 flex-1" />
                 </div>
 
                 <button
                   onClick={handleGuestLogin}
-                  className="w-full py-4 bg-stone-50 text-stone-600 rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-100 transition-all active:scale-[0.98]"
+                  className="w-full py-4 bg-stone-50 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-2xl font-medium flex items-center justify-center gap-3 hover:bg-stone-100 dark:hover:bg-stone-700 transition-all active:scale-[0.98]"
                 >
                   <UserIcon size={20} />
                   Continue as Guest
@@ -958,13 +997,13 @@ export default function App() {
               >
                 <button 
                   onClick={() => { setAuthMode('selection'); setAuthError(null); }}
-                  className="flex items-center gap-2 text-stone-400 hover:text-black mb-6 transition-colors text-sm font-medium"
+                  className="flex items-center gap-2 text-stone-400 dark:text-stone-500 hover:text-black dark:hover:text-stone-100 mb-6 transition-colors text-sm font-medium"
                 >
                   <ArrowLeft size={16} />
                   Back to options
                 </button>
 
-                <h2 className="text-2xl font-bold mb-6">
+                <h2 className="text-2xl font-bold mb-6 text-stone-900 dark:text-stone-100">
                   {authMode === 'email-login' ? 'Welcome Back' : 'Create Account'}
                 </h2>
 
@@ -973,14 +1012,14 @@ export default function App() {
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Full Name</label>
                       <div className="relative">
-                        <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                        <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                         <input 
                           type="text" 
                           required
                           value={displayName}
                           onChange={(e) => setDisplayName(e.target.value)}
                           placeholder="John Doe"
-                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                         />
                       </div>
                     </div>
@@ -989,50 +1028,50 @@ export default function App() {
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Student ID</label>
                       <div className="relative">
-                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                         <input 
                           type="text" 
                           required
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
                           placeholder="e.g. UGR/1234/15"
-                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono"
+                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
                         />
                       </div>
-                      <p className="text-[10px] text-stone-400 italic">Format: UGR/****/**</p>
+                      <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/****/**</p>
                     </div>
                   )}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Email Address</label>
                     <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                       <input 
                         type="email" 
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@university.edu"
-                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Password</label>
                     <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                       <input 
                         type="password" 
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                       />
                     </div>
                   </div>
 
                   {authError && (
-                    <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-xs">
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center gap-2 text-red-600 dark:text-red-400 text-xs text-left">
                       <AlertCircle size={14} />
                       {authError}
                     </div>
@@ -1040,38 +1079,38 @@ export default function App() {
 
                   <button
                     type="submit"
-                    className="w-full py-4 bg-black text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all shadow-lg shadow-black/10"
+                    className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50"
                   >
                     {authMode === 'email-login' ? 'Sign In' : 'Create Account'}
                   </button>
 
                   <div className="relative my-6">
                     <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-stone-200"></div>
+                      <div className="w-full border-t border-stone-200 dark:border-stone-800"></div>
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-stone-400 font-bold tracking-widest">Or</span>
+                      <span className="bg-white dark:bg-stone-900 px-2 text-stone-400 dark:text-stone-500 font-bold tracking-widest">Or</span>
                     </div>
                   </div>
 
                   <button
                     onClick={handleGuestLogin}
                     disabled={loading}
-                    className="w-full py-4 bg-stone-100 text-stone-600 rounded-2xl font-bold hover:bg-stone-200 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-2xl font-bold hover:bg-stone-200 dark:hover:bg-stone-700 transition-all flex items-center justify-center gap-2"
                   >
                     <UserIcon size={20} />
                     Continue as Guest
                   </button>
                 </form>
 
-                <p className="mt-6 text-center text-sm text-stone-500">
+                <p className="mt-6 text-center text-sm text-stone-500 dark:text-stone-400">
                   {authMode === 'email-login' ? "Don't have an account? " : "Already have an account? "}
                   <button 
                     onClick={() => {
                       setAuthMode(authMode === 'email-login' ? 'email-signup' : 'email-login');
                       setAuthError(null);
                     }}
-                    className="font-bold text-black hover:underline"
+                    className="font-bold text-black dark:text-stone-100 hover:underline"
                   >
                     {authMode === 'email-login' ? 'Sign Up' : 'Sign In'}
                   </button>
@@ -1080,7 +1119,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <p className="mt-10 text-xs text-stone-400">
+          <p className="mt-10 text-xs text-stone-400 dark:text-stone-500">
             Secure access for university students and faculty.
           </p>
         </motion.div>
@@ -1090,7 +1129,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-white text-stone-900 font-sans selection:bg-blue-600 selection:text-white pb-24">
+      <div className="min-h-screen bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 font-sans selection:bg-blue-600 selection:text-white pb-24 transition-colors duration-300">
         {/* Missing Student ID Warning */}
         {profile && profile.role === 'student' && !profile.studentId && activeTab !== 'profile' && (
           <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-center justify-between gap-4">
@@ -1117,8 +1156,16 @@ export default function App() {
           <header className="px-6 pt-8 pb-6">
             <div className="flex justify-between items-center mb-1">
               <h1 className="text-3xl font-bold tracking-tight">Class Status</h1>
-              <div className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center text-xs font-bold text-stone-500">
-                {profile?.displayName?.split(' ').map(n => n[0]).join('') || 'JS'}
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={toggleDarkMode}
+                  className="p-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+                >
+                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
+                <div className="w-10 h-10 bg-stone-100 dark:bg-stone-800 rounded-full flex items-center justify-center text-xs font-bold text-stone-500 dark:text-stone-400">
+                  {profile?.displayName?.split(' ').map(n => n[0]).join('') || 'JS'}
+                </div>
               </div>
             </div>
             <p className="text-stone-400 font-medium">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
@@ -1129,11 +1176,17 @@ export default function App() {
           <header className="px-6 pt-8 pb-4">
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-3xl font-bold tracking-tight">Class Schedule</h1>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <button 
+                  onClick={toggleDarkMode}
+                  className="p-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+                >
+                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
                 {isAdmin && (
                   <button 
                     onClick={() => { setEditingClass(null); setShowAdminModal(true); }}
-                    className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200"
+                    className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-blue-900/20"
                   >
                     <Plus size={24} />
                   </button>
@@ -1177,40 +1230,74 @@ export default function App() {
         {activeTab === 'deadlines' && (
           <header className="px-6 pt-8 pb-6">
             <div className="flex justify-between items-center mb-1">
-              <h1 className="text-3xl font-bold tracking-tight">My Schedule</h1>
-              {isAdmin && (
+              <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">My Schedule</h1>
+              <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => setIsAddingDeadline(true)}
-                  className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200"
+                  onClick={toggleDarkMode}
+                  className="p-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
                 >
-                  <Plus size={24} />
+                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
                 </button>
-              )}
+                {isAdmin && (
+                  <button 
+                    onClick={() => setIsAddingDeadline(true)}
+                    className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-blue-900/20"
+                  >
+                    <Plus size={24} />
+                  </button>
+                )}
+              </div>
             </div>
-            <p className="text-stone-400 font-medium">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+            <p className="text-stone-400 dark:text-stone-500 font-medium">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
           </header>
         )}
 
         {activeTab === 'profile' && (
-          <header className="px-6 pt-8 pb-6">
-            <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
+          <header className="px-6 pt-8 pb-6 flex justify-between items-center">
+            <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">Profile</h1>
+            <button 
+              onClick={toggleDarkMode}
+              className="p-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+            >
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
           </header>
         )}
 
         {activeTab === 'sick-leave' && (
           <header className="px-6 pt-8 pb-6">
             <div className="flex justify-between items-center mb-1">
-              <h1 className="text-3xl font-bold tracking-tight">Medical Leave</h1>
-              {!isAdmin && !user?.isAnonymous && (
+              <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">Medical Leave</h1>
+              <div className="flex items-center gap-3">
                 <button 
-                  onClick={() => setIsSubmittingSickLeave(true)}
-                  className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200"
+                  onClick={toggleDarkMode}
+                  className="p-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
                 >
-                  <Plus size={24} />
+                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
                 </button>
-              )}
+                {!isAdmin && !user?.isAnonymous && (
+                  <button 
+                    onClick={() => setIsSubmittingSickLeave(true)}
+                    className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-blue-900/20"
+                  >
+                    <Plus size={24} />
+                  </button>
+                )}
+              </div>
             </div>
-            <p className="text-stone-400 font-medium">Submit & Track Requests</p>
+            <p className="text-stone-400 dark:text-stone-500 font-medium">Submit & Track Requests</p>
+          </header>
+        )}
+
+        {activeTab === 'attendance' && (
+          <header className="px-6 pt-8 pb-6 flex justify-between items-center">
+            <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">Attendance</h1>
+            <button 
+              onClick={toggleDarkMode}
+              className="p-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+            >
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
           </header>
         )}
 
@@ -1239,32 +1326,32 @@ export default function App() {
                         <div>
                           <div className="flex justify-between items-center mb-6">
                             <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Today's Schedule</h2>
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
                               {todayClasses.length} TOTAL
                             </span>
                           </div>
                           <div className="space-y-4">
                             {todayClasses.length > 0 ? (
                               todayClasses.map((c) => (
-                                <div key={c.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-6 shadow-sm">
+                                <div key={c.id} className="bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-3xl p-6 flex items-center gap-6 shadow-sm">
                                   <div className="text-center min-w-[60px]">
-                                    <p className="text-sm font-bold text-stone-400">{c.time.split(' ')[0]}</p>
-                                    <p className="text-[10px] font-bold text-stone-300 uppercase">{c.time.split(' ')[1]}</p>
+                                    <p className="text-sm font-bold text-stone-400 dark:text-stone-500">{c.time.split(' ')[0]}</p>
+                                    <p className="text-[10px] font-bold text-stone-300 dark:text-stone-600 uppercase">{c.time.split(' ')[1]}</p>
                                     {c.duration && (
-                                      <p className="text-[9px] font-bold text-blue-500 mt-1">{c.duration}</p>
+                                      <p className="text-[9px] font-bold text-blue-500 dark:text-blue-400 mt-1">{c.duration}</p>
                                     )}
                                   </div>
-                                  <div className="h-10 w-px bg-stone-100" />
+                                  <div className="h-10 w-px bg-stone-100 dark:bg-stone-800" />
                                   <div className="flex-1">
-                                    <h4 className="font-bold text-stone-900 mb-0.5">{c.name}</h4>
-                                    <p className="text-xs text-stone-400 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
+                                    <h4 className="font-bold text-stone-900 dark:text-stone-100 mb-0.5">{c.name}</h4>
+                                    <p className="text-xs text-stone-400 dark:text-stone-500 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
                                   </div>
                                   <StatusBadge status={c.status} duration={c.duration} />
                                 </div>
                               ))
                             ) : (
-                              <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
-                                <p className="text-stone-400 text-sm font-medium">No classes scheduled for today.</p>
+                              <div className="py-12 text-center bg-stone-50 dark:bg-stone-900/50 rounded-[32px] border border-dashed border-stone-200 dark:border-stone-800">
+                                <p className="text-stone-400 dark:text-stone-500 text-sm font-medium">No classes scheduled for today.</p>
                               </div>
                             )}
                           </div>
@@ -1273,29 +1360,29 @@ export default function App() {
                         <div>
                           <div className="flex justify-between items-center mb-6">
                             <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Upcoming Tomorrow</h2>
-                            <span className="text-[10px] font-bold text-stone-400 bg-stone-100 px-2 py-1 rounded-lg">
+                            <span className="text-[10px] font-bold text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800 px-2 py-1 rounded-lg">
                               {tomorrowClasses.length} TOTAL
                             </span>
                           </div>
                           <div className="space-y-4">
                             {tomorrowClasses.length > 0 ? (
                               tomorrowClasses.map((c) => (
-                                <div key={c.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-6 shadow-sm opacity-70">
+                                <div key={c.id} className="bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-3xl p-6 flex items-center gap-6 shadow-sm opacity-70">
                                   <div className="text-center min-w-[60px]">
-                                    <p className="text-sm font-bold text-stone-400">{c.time.split(' ')[0]}</p>
-                                    <p className="text-[10px] font-bold text-stone-300 uppercase">{c.time.split(' ')[1]}</p>
+                                    <p className="text-sm font-bold text-stone-400 dark:text-stone-500">{c.time.split(' ')[0]}</p>
+                                    <p className="text-[10px] font-bold text-stone-300 dark:text-stone-600 uppercase">{c.time.split(' ')[1]}</p>
                                   </div>
-                                  <div className="h-10 w-px bg-stone-100" />
+                                  <div className="h-10 w-px bg-stone-100 dark:bg-stone-800" />
                                   <div className="flex-1">
-                                    <h4 className="font-bold text-stone-900 mb-0.5">{c.name}</h4>
-                                    <p className="text-xs text-stone-400 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
+                                    <h4 className="font-bold text-stone-900 dark:text-stone-100 mb-0.5">{c.name}</h4>
+                                    <p className="text-xs text-stone-400 dark:text-stone-500 font-medium">{c.room ? `${c.room} • ` : ''}{c.instructor}</p>
                                   </div>
                                   <StatusBadge status={c.status} duration={c.duration} />
                                 </div>
                               ))
                             ) : (
-                              <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
-                                <p className="text-stone-400 text-sm font-medium">No classes scheduled for tomorrow.</p>
+                              <div className="py-12 text-center bg-stone-50 dark:bg-stone-900/50 rounded-[32px] border border-dashed border-stone-200 dark:border-stone-800">
+                                <p className="text-stone-400 dark:text-stone-500 text-sm font-medium">No classes scheduled for tomorrow.</p>
                               </div>
                             )}
                           </div>
@@ -1327,16 +1414,16 @@ export default function App() {
                           {isToday ? "Today's Sessions" : `${selectedDayName}'s Sessions`}
                         </h2>
                         <div className="relative pl-8 space-y-6">
-                          <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-stone-100" />
+                          <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-stone-100 dark:bg-stone-800" />
                           {dayClasses.length > 0 ? (
                             dayClasses.map((c, i) => (
                               <div key={c.id} className="relative">
-                                <div className={`absolute -left-[29px] top-2 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${isToday && i === 0 ? 'bg-blue-600' : 'bg-stone-200'}`} />
-                                <div className="bg-white border border-stone-100 rounded-3xl p-6 shadow-sm">
+                                <div className={`absolute -left-[29px] top-2 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-stone-900 shadow-sm ${isToday && i === 0 ? 'bg-blue-600' : 'bg-stone-200 dark:bg-stone-700'}`} />
+                                <div className="bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-3xl p-6 shadow-sm">
                                   <div className="flex justify-between items-start mb-4">
                                     <div className="flex-1">
-                                      <h4 className="text-xl font-bold text-stone-900 mb-1">{c.name}</h4>
-                                      <p className="text-sm text-stone-400 font-medium">{c.instructor}</p>
+                                      <h4 className="text-xl font-bold text-stone-900 dark:text-stone-100 mb-1">{c.name}</h4>
+                                      <p className="text-sm text-stone-400 dark:text-stone-500 font-medium">{c.instructor}</p>
                                     </div>
                                     <div className="flex flex-col items-end gap-2">
                                       <StatusBadge status={isToday && i === 0 ? 'in-progress' : (c.status === 'canceled' ? 'canceled' : 'upcoming')} />
@@ -1358,9 +1445,9 @@ export default function App() {
                                                 // Reveal code 15 mins before and up to 3 hours after start
                                                 if (current >= classStart - 15 && current <= classStart + 180) {
                                                   return (
-                                                    <div className="px-2 py-1 bg-purple-50 border border-purple-100 rounded-lg flex items-center gap-1.5">
-                                                      <Lock size={10} className="text-purple-600" />
-                                                      <span className="text-[10px] font-bold text-purple-700 font-mono">{c.attendanceCode}</span>
+                                                    <div className="px-2 py-1 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-lg flex items-center gap-1.5">
+                                                      <Lock size={10} className="text-purple-600 dark:text-purple-400" />
+                                                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 font-mono">{c.attendanceCode}</span>
                                                     </div>
                                                   );
                                                 }
@@ -1370,7 +1457,7 @@ export default function App() {
                                           })()}
                                           <button 
                                             onClick={() => { setEditingClass(c); setShowAdminModal(true); }}
-                                            className="p-2 text-stone-400 hover:text-blue-600 transition-colors"
+                                            className="p-2 text-stone-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                                           >
                                             <Edit2 size={16} />
                                           </button>
@@ -1379,17 +1466,17 @@ export default function App() {
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap gap-4 sm:gap-6">
-                                    <div className="flex items-center gap-2 text-stone-400">
+                                    <div className="flex items-center gap-2 text-stone-400 dark:text-stone-500">
                                       <Clock size={16} />
                                       <span className="text-xs font-bold">{c.time}</span>
                                     </div>
                                     {c.duration && (
-                                      <div className="flex items-center gap-2 text-stone-400">
+                                      <div className="flex items-center gap-2 text-stone-400 dark:text-stone-500">
                                         <History size={16} />
                                         <span className="text-xs font-bold">{c.duration}</span>
                                       </div>
                                     )}
-                                    <div className="flex items-center gap-2 text-stone-400">
+                                    <div className="flex items-center gap-2 text-stone-400 dark:text-stone-500">
                                       <MapPin size={16} />
                                       <span className="text-xs font-bold">{c.room || 'TBA'}</span>
                                     </div>
@@ -1398,8 +1485,8 @@ export default function App() {
                               </div>
                             ))
                           ) : (
-                            <div className="py-12 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
-                              <p className="text-stone-400 text-sm font-medium">No classes scheduled for this day.</p>
+                            <div className="py-12 text-center bg-stone-50 dark:bg-stone-900/50 rounded-[32px] border border-dashed border-stone-200 dark:border-stone-800">
+                              <p className="text-stone-400 dark:text-stone-500 text-sm font-medium">No classes scheduled for this day.</p>
                             </div>
                           )}
                         </div>
@@ -1429,22 +1516,22 @@ export default function App() {
                     <div className="flex justify-between items-center mb-6">
                       <div className="flex items-center gap-3">
                         <div className={`w-1.5 h-6 rounded-full ${section.color}`} />
-                        <h2 className="text-xl font-bold">{section.title}</h2>
+                        <h2 className="text-xl font-bold text-stone-900 dark:text-stone-100">{section.title}</h2>
                       </div>
-                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                      <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
                         {deadlines.filter(d => d.type === section.type).length} {section.type === 'test' ? 'Pending' : 'Total'}
                       </span>
                     </div>
 
                     <div className="space-y-4">
                       {deadlines.filter(d => d.type === section.type).map((d) => (
-                        <div key={d.id} className="bg-white border border-stone-100 rounded-3xl p-6 flex items-center gap-4 shadow-sm">
-                          <button className="w-6 h-6 rounded-full border-2 border-stone-200 flex items-center justify-center hover:border-blue-600 transition-colors">
+                        <div key={d.id} className="bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-3xl p-6 flex items-center gap-4 shadow-sm">
+                          <button className="w-6 h-6 rounded-full border-2 border-stone-200 dark:border-stone-700 flex items-center justify-center hover:border-blue-600 dark:hover:border-blue-500 transition-colors">
                             {/* Checkmark placeholder */}
                           </button>
                           <div className="flex-1">
-                            <h4 className="font-bold text-stone-900 mb-0.5">{d.title}</h4>
-                            <p className="text-xs text-stone-400 font-medium">
+                            <h4 className="font-bold text-stone-900 dark:text-stone-100 mb-0.5">{d.title}</h4>
+                            <p className="text-xs text-stone-400 dark:text-stone-500 font-medium">
                               {d.dueDate} • {d.course}
                             </p>
                           </div>
@@ -1465,43 +1552,43 @@ export default function App() {
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-8"
               >
-                <div className="bg-white border border-stone-100 rounded-3xl p-8 text-center shadow-sm">
-                  <div className="w-24 h-24 bg-stone-100 rounded-full flex items-center justify-center text-2xl font-bold text-stone-500 mx-auto mb-6">
+                <div className="bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-3xl p-8 text-center shadow-sm">
+                  <div className="w-24 h-24 bg-stone-100 dark:bg-stone-800 rounded-full flex items-center justify-center text-2xl font-bold text-stone-500 dark:text-stone-400 mx-auto mb-6">
                     {profile?.displayName?.split(' ').map(n => n[0]).join('') || 'JS'}
                   </div>
-                  <h2 className="text-2xl font-bold mb-1">{profile?.displayName}</h2>
-                  <p className="text-stone-400 font-medium mb-8">{profile?.email}</p>
+                  <h2 className="text-2xl font-bold mb-1 text-stone-900 dark:text-stone-100">{profile?.displayName}</h2>
+                  <p className="text-stone-400 dark:text-stone-500 font-medium mb-8">{profile?.email}</p>
                   
                   <div className="space-y-6 text-left">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-stone-50 p-4 rounded-2xl">
-                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Role</p>
-                        <p className="font-bold capitalize">{profile?.role}</p>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-4 rounded-2xl">
+                        <p className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-widest mb-1">Role</p>
+                        <p className="font-bold capitalize text-stone-900 dark:text-stone-100">{profile?.role}</p>
                       </div>
-                      <div className="bg-stone-50 p-4 rounded-2xl">
-                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Status</p>
-                        <p className="font-bold text-emerald-600">Active</p>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-4 rounded-2xl">
+                        <p className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-widest mb-1">Status</p>
+                        <p className="font-bold text-emerald-600 dark:text-emerald-400">Active</p>
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Student ID</label>
                       <div className="relative">
-                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                         <input 
                           type="text" 
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
                           placeholder="UGR/****/**"
-                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono"
+                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
                         />
                       </div>
-                      <p className="text-[10px] text-stone-400 italic">Format: UGR/****/**</p>
+                      <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/****/**</p>
                     </div>
 
                     <button
                       onClick={handleUpdateProfile}
-                      className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg shadow-black/10"
+                      className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50"
                     >
                       Save Profile
                     </button>
@@ -1510,7 +1597,7 @@ export default function App() {
 
                 <button
                   onClick={handleLogout}
-                  className="w-full py-4 bg-red-50 text-red-600 rounded-2xl font-bold hover:bg-red-100 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-100 dark:hover:bg-red-900/30 transition-all flex items-center justify-center gap-2"
                 >
                   <LogOut size={20} />
                   Sign Out
@@ -1527,7 +1614,7 @@ export default function App() {
                 className="space-y-6"
               >
                 <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Attendance Records</h2>
+                  <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Attendance Counter</h2>
                   {isAdmin && (
                     <button
                       onClick={handleExportAttendance}
@@ -1537,6 +1624,46 @@ export default function App() {
                       Export CSV
                     </button>
                   )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white dark:bg-stone-900 p-6 rounded-3xl border border-stone-100 dark:border-stone-800 shadow-sm">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Select Subject</label>
+                    <select 
+                      value={attendanceFilterSubject}
+                      onChange={(e) => setAttendanceFilterSubject(e.target.value)}
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all appearance-none text-stone-900 dark:text-stone-100"
+                    >
+                      <option value="All">All Subjects</option>
+                      {Array.from(new Set(classes.map(c => c.name))).sort().map(subject => (
+                        <option key={subject} value={subject}>{subject}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Select Date</label>
+                    <input 
+                      type="date" 
+                      value={attendanceFilterDate}
+                      onChange={(e) => setAttendanceFilterDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-blue-600 dark:bg-blue-700 rounded-[32px] p-10 text-center text-white shadow-xl shadow-blue-100 dark:shadow-black/20">
+                  <p className="text-blue-100 text-xs font-bold uppercase tracking-[0.2em] mb-4">Total Attendance</p>
+                  <div className="text-7xl font-bold mb-2">
+                    {attendance.filter(record => {
+                      const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+                      const matchesDate = recordDate === attendanceFilterDate;
+                      const matchesSubject = attendanceFilterSubject === 'All' || record.className === attendanceFilterSubject;
+                      return matchesDate && matchesSubject;
+                    }).length}
+                  </div>
+                  <p className="text-blue-100/80 text-sm font-medium">
+                    {attendanceFilterSubject === 'All' ? 'Across all subjects' : `For ${attendanceFilterSubject}`}
+                  </p>
                 </div>
 
                 {!isAdmin && (
@@ -1550,39 +1677,14 @@ export default function App() {
                     }}
                     className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${
                       user?.isAnonymous 
-                        ? 'bg-stone-100 text-stone-400 cursor-not-allowed' 
-                        : 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700'
+                        ? 'bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-600 cursor-not-allowed' 
+                        : 'bg-blue-600 dark:bg-blue-700 text-white shadow-blue-200 dark:shadow-black/20 hover:bg-blue-700 dark:hover:bg-blue-600'
                     }`}
                   >
                     <Check size={20} />
                     Sign My Attendance
                   </button>
                 )}
-
-                <div className="space-y-4">
-                  {attendance.length > 0 ? (
-                    attendance.map((record) => (
-                      <div key={record.id} className="bg-white border border-stone-100 rounded-3xl p-5 shadow-sm">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="font-bold text-stone-900">{record.studentName}</h4>
-                            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">{record.studentId}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs font-bold text-blue-600">{record.className}</p>
-                            <p className="text-[10px] text-stone-300">{new Date(record.timestamp).toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-20 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
-                      <Check className="mx-auto text-stone-200 mb-4" size={48} />
-                      <h3 className="text-lg font-medium text-stone-900">No attendance records</h3>
-                      <p className="text-stone-500 text-sm">Records will appear here once students sign in.</p>
-                    </div>
-                  )}
-                </div>
               </motion.div>
             )}
 
@@ -1621,25 +1723,25 @@ export default function App() {
                     filteredSickLeaves.map((leave) => (
                       <div
                         key={leave.id}
-                        className="bg-white border border-stone-100 rounded-3xl p-5 shadow-sm"
+                        className="bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-3xl p-5 shadow-sm"
                       >
                         <div className="flex justify-between items-start mb-4">
                           <div>
-                            <h3 className="font-bold text-stone-900">{isAdmin ? leave.studentName : 'Sick Leave Request'}</h3>
+                            <h3 className="font-bold text-stone-900 dark:text-stone-100">{isAdmin ? leave.studentName : 'Sick Leave Request'}</h3>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
+                              <p className="text-[10px] text-stone-400 dark:text-stone-500 font-bold uppercase tracking-widest">
                                 Submitted {new Date(leave.submittedAt).toLocaleDateString()}
                               </p>
-                              <span className="w-1 h-1 bg-stone-300 rounded-full" />
-                              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">
+                              <span className="w-1 h-1 bg-stone-300 dark:bg-stone-700 rounded-full" />
+                              <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-widest">
                                 {leave.type || 'Illness'}
                               </p>
                             </div>
                           </div>
                           <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            leave.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                            leave.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                            'bg-amber-100 text-amber-700'
+                            leave.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' :
+                            leave.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                            'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                           }`}>
                             {leave.status}
                           </span>
@@ -1647,25 +1749,25 @@ export default function App() {
 
                         <div className="space-y-4">
                           <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 bg-stone-50 rounded-2xl">
-                              <p className="text-[10px] text-stone-400 uppercase font-bold mb-1">From</p>
-                              <p className="text-sm font-bold">{leave.startDate}</p>
+                            <div className="p-3 bg-stone-50 dark:bg-stone-800 rounded-2xl">
+                              <p className="text-[10px] text-stone-400 dark:text-stone-500 uppercase font-bold mb-1">From</p>
+                              <p className="text-sm font-bold text-stone-900 dark:text-stone-100">{leave.startDate}</p>
                             </div>
-                            <div className="p-3 bg-stone-50 rounded-2xl">
-                              <p className="text-[10px] text-stone-400 uppercase font-bold mb-1">To</p>
-                              <p className="text-sm font-bold">{leave.endDate}</p>
+                            <div className="p-3 bg-stone-50 dark:bg-stone-800 rounded-2xl">
+                              <p className="text-[10px] text-stone-400 dark:text-stone-500 uppercase font-bold mb-1">To</p>
+                              <p className="text-sm font-bold text-stone-900 dark:text-stone-100">{leave.endDate}</p>
                             </div>
                           </div>
 
-                          <div className="p-4 bg-stone-50 rounded-2xl">
-                            <p className="text-[10px] text-stone-400 uppercase font-bold mb-1">Reason</p>
-                            <p className="text-sm text-stone-600 italic">"{leave.reason}"</p>
+                          <div className="p-4 bg-stone-50 dark:bg-stone-800 rounded-2xl">
+                            <p className="text-[10px] text-stone-400 dark:text-stone-500 uppercase font-bold mb-1">Reason</p>
+                            <p className="text-sm text-stone-600 dark:text-stone-400 italic">"{leave.reason}"</p>
                           </div>
 
                           {leave.adminComment && (
-                            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                              <p className="text-[10px] text-blue-400 uppercase font-bold mb-1">Admin Comment</p>
-                              <p className="text-sm text-blue-700">{leave.adminComment}</p>
+                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
+                              <p className="text-[10px] text-blue-400 dark:text-blue-500 uppercase font-bold mb-1">Admin Comment</p>
+                              <p className="text-sm text-blue-700 dark:text-blue-300">{leave.adminComment}</p>
                             </div>
                           )}
 
@@ -1697,10 +1799,10 @@ export default function App() {
                       </div>
                     ))
                   ) : (
-                    <div className="py-20 text-center bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
-                      <Stethoscope className="mx-auto text-stone-200 mb-4" size={48} />
-                      <h3 className="text-lg font-medium text-stone-900">No requests found</h3>
-                      <p className="text-stone-500 text-sm">
+                    <div className="py-20 text-center bg-stone-50 dark:bg-stone-900/50 rounded-[32px] border border-dashed border-stone-200 dark:border-stone-800">
+                      <Stethoscope className="mx-auto text-stone-200 dark:text-stone-800 mb-4" size={48} />
+                      <h3 className="text-lg font-medium text-stone-900 dark:text-stone-100">No requests found</h3>
+                      <p className="text-stone-500 dark:text-stone-400 text-sm">
                         {isAdmin ? 'All caught up!' : 'Submit a request if you\'re unwell.'}
                       </p>
                     </div>
@@ -1712,7 +1814,7 @@ export default function App() {
         </main>
 
         {/* Bottom Navigation */}
-        <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-stone-100 px-6 py-4 z-40">
+        <nav className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-stone-900/80 backdrop-blur-md border-t border-stone-100 dark:border-stone-800 px-6 py-4 z-40 transition-colors duration-300">
           <div className="max-w-md mx-auto flex justify-between items-center">
             {[
               { id: 'status', label: 'STATUS', icon: Home },
@@ -1726,7 +1828,7 @@ export default function App() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex flex-col items-center gap-1 transition-all ${
-                  activeTab === tab.id ? 'text-blue-600' : 'text-stone-300'
+                  activeTab === tab.id ? 'text-blue-600' : 'text-stone-300 dark:text-stone-600'
                 }`}
               >
                 <tab.icon size={24} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
@@ -1744,11 +1846,11 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl"
+              className="bg-white dark:bg-stone-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl dark:shadow-black/50 border border-stone-100 dark:border-stone-800"
             >
               <div className="flex justify-between items-center mb-8">
-                <h2 className="text-2xl font-bold">Add New Deadline</h2>
-                <button onClick={() => setIsAddingDeadline(false)} className="p-2 hover:bg-stone-100 rounded-full">
+                <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">Add New Deadline</h2>
+                <button onClick={() => setIsAddingDeadline(false)} className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-400">
                   <Plus size={24} className="rotate-45" />
                 </button>
               </div>
@@ -1762,7 +1864,7 @@ export default function App() {
                     value={deadlineTitle}
                     onChange={(e) => setDeadlineTitle(e.target.value)}
                     placeholder="e.g. Final Project Submission"
-                    className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                    className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                   />
                 </div>
 
@@ -1772,7 +1874,7 @@ export default function App() {
                     <select 
                       value={deadlineType}
                       onChange={(e) => setDeadlineType(e.target.value as any)}
-                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all appearance-none"
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all appearance-none text-stone-900 dark:text-stone-100"
                     >
                       <option value="assignment">Assignment</option>
                       <option value="test">Test</option>
@@ -1788,7 +1890,7 @@ export default function App() {
                       required
                       value={deadlineDate}
                       onChange={(e) => setDeadlineDate(e.target.value)}
-                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                     />
                   </div>
                 </div>
@@ -1801,7 +1903,7 @@ export default function App() {
                       value={deadlineCourse}
                       onChange={(e) => setDeadlineCourse(e.target.value)}
                       placeholder="e.g. MATH 101"
-                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1809,7 +1911,7 @@ export default function App() {
                     <select 
                       value={deadlinePriority}
                       onChange={(e) => setDeadlinePriority(e.target.value as any)}
-                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all appearance-none"
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all appearance-none text-stone-900 dark:text-stone-100"
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -1825,13 +1927,13 @@ export default function App() {
                     onChange={(e) => setDeadlineNotes(e.target.value)}
                     placeholder="Additional details..."
                     rows={3}
-                    className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all resize-none"
+                    className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all resize-none text-stone-900 dark:text-stone-100"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg shadow-black/10"
+                  className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50"
                 >
                   Save Deadline
                 </button>
@@ -1856,17 +1958,17 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden"
+                className="relative bg-white dark:bg-stone-900 w-full max-w-xl rounded-3xl shadow-2xl dark:shadow-black/50 overflow-hidden border border-stone-100 dark:border-stone-800"
               >
-                <div className="p-6 border-b border-stone-100 flex justify-between items-center">
-                  <h2 className="text-xl font-bold tracking-tight">
+                <div className="p-6 border-b border-stone-100 dark:border-stone-800 flex justify-between items-center">
+                  <h2 className="text-xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
                     {editingClass ? 'Edit Class Status' : 'Add New Class'}
                   </h2>
                   <button 
                     onClick={() => setShowAdminModal(false)}
-                    className="p-2 hover:bg-stone-100 rounded-xl transition-colors"
+                    className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl transition-colors"
                   >
-                    <Plus className="rotate-45 text-stone-400" size={20} />
+                    <Plus className="rotate-45 text-stone-400 dark:text-stone-500" size={20} />
                   </button>
                 </div>
 
@@ -1879,7 +1981,7 @@ export default function App() {
                         required 
                         defaultValue={editingClass?.name}
                         placeholder="e.g. CS 101"
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-sm text-stone-900 dark:text-stone-100"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1888,7 +1990,7 @@ export default function App() {
                         name="instructor" 
                         defaultValue={editingClass?.instructor}
                         placeholder="e.g. Dr. Smith"
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-sm text-stone-900 dark:text-stone-100"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1897,7 +1999,7 @@ export default function App() {
                         name="dayOfWeek" 
                         required 
                         defaultValue={editingClass?.dayOfWeek || 'Monday'}
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all appearance-none text-sm"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all appearance-none text-sm text-stone-900 dark:text-stone-100"
                       >
                         {days.filter(d => d !== 'All').map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
@@ -1909,7 +2011,7 @@ export default function App() {
                         required 
                         defaultValue={editingClass?.time}
                         placeholder="e.g. 10:00 AM"
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-sm text-stone-900 dark:text-stone-100"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1918,7 +2020,7 @@ export default function App() {
                         name="room" 
                         defaultValue={editingClass?.room}
                         placeholder="e.g. 402B"
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-sm text-stone-900 dark:text-stone-100"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1927,7 +2029,7 @@ export default function App() {
                         name="duration" 
                         defaultValue={editingClass?.duration}
                         placeholder="e.g. 1h 30m"
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-sm text-stone-900 dark:text-stone-100"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1936,7 +2038,7 @@ export default function App() {
                         name="status" 
                         required 
                         defaultValue={editingClass?.status || 'normal'}
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all appearance-none text-sm"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all appearance-none text-sm text-stone-900 dark:text-stone-100"
                       >
                         <option value="normal">Normal</option>
                         <option value="canceled">Canceled</option>
@@ -1954,7 +2056,7 @@ export default function App() {
                         pattern="\d{4}"
                         defaultValue={editingClass?.attendanceCode}
                         placeholder="e.g. 1234"
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all text-sm font-mono"
+                        className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-sm font-mono text-stone-900 dark:text-stone-100"
                       />
                     </div>
                   </div>
@@ -1966,13 +2068,13 @@ export default function App() {
                       defaultValue={editingClass?.details}
                       placeholder="Additional info..."
                       rows={2}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-black transition-all resize-none text-sm"
+                      className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all resize-none text-sm text-stone-900 dark:text-stone-100"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-black text-white rounded-xl font-bold text-sm hover:bg-stone-800 transition-all shadow-lg shadow-black/10 active:scale-[0.98]"
+                    className="w-full py-3 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-xl font-bold text-sm hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50 active:scale-[0.98]"
                   >
                     {editingClass ? 'Update Status' : 'Create Entry'}
                   </button>
@@ -1990,12 +2092,12 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl"
+                className="bg-white dark:bg-stone-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl dark:shadow-black/50 border border-stone-100 dark:border-stone-800"
               >
                 <div className="flex justify-between items-center mb-8">
-                  <h2 className="text-2xl font-bold">Submit Sick Leave</h2>
-                  <button onClick={() => setIsSubmittingSickLeave(false)} className="p-2 hover:bg-stone-100 rounded-full">
-                    <Plus size={24} className="rotate-45" />
+                  <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">Submit Sick Leave</h2>
+                  <button onClick={() => setIsSubmittingSickLeave(false)} className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full transition-colors">
+                    <Plus size={24} className="rotate-45 text-stone-400 dark:text-stone-500" />
                   </button>
                 </div>
 
@@ -2007,7 +2109,7 @@ export default function App() {
                         type="button"
                         onClick={() => setSickLeaveType('illness')}
                         className={`py-3 rounded-xl font-bold text-sm transition-all ${
-                          sickLeaveType === 'illness' ? 'bg-blue-600 text-white' : 'bg-stone-50 text-stone-400 border border-stone-200'
+                          sickLeaveType === 'illness' ? 'bg-black dark:bg-stone-100 text-white dark:text-stone-900' : 'bg-stone-50 dark:bg-stone-800 text-stone-400 dark:text-stone-500 border border-stone-200 dark:border-stone-700'
                         }`}
                       >
                         Illness
@@ -2016,7 +2118,7 @@ export default function App() {
                         type="button"
                         onClick={() => setSickLeaveType('event')}
                         className={`py-3 rounded-xl font-bold text-sm transition-all ${
-                          sickLeaveType === 'event' ? 'bg-blue-600 text-white' : 'bg-stone-50 text-stone-400 border border-stone-200'
+                          sickLeaveType === 'event' ? 'bg-black dark:bg-stone-100 text-white dark:text-stone-900' : 'bg-stone-50 dark:bg-stone-800 text-stone-400 dark:text-stone-500 border border-stone-200 dark:border-stone-700'
                         }`}
                       >
                         Life Event
@@ -2032,7 +2134,7 @@ export default function App() {
                       onChange={(e) => setSickLeaveReason(e.target.value)}
                       placeholder={sickLeaveType === 'illness' ? "Briefly explain your medical reason..." : "Explain the life event..."}
                       rows={3}
-                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all resize-none"
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all resize-none text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-600"
                     />
                   </div>
 
@@ -2044,7 +2146,7 @@ export default function App() {
                         required
                         value={sickLeaveStart}
                         onChange={(e) => setSickLeaveStart(e.target.value)}
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                        className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                       />
                     </div>
                     <div className="space-y-2">
@@ -2054,14 +2156,14 @@ export default function App() {
                         required
                         value={sickLeaveEnd}
                         onChange={(e) => setSickLeaveEnd(e.target.value)}
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all"
+                        className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
                       />
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg shadow-black/10 flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50 flex items-center justify-center gap-2"
                   >
                     <Send size={18} />
                     Submit Request
@@ -2073,16 +2175,16 @@ export default function App() {
         </AnimatePresence>
 
         {/* Footer */}
-        <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 border-t border-stone-200 mt-12">
+        <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 border-t border-stone-200 dark:border-stone-800 mt-12">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-2 opacity-40">
+            <div className="flex items-center gap-2 opacity-40 text-stone-900 dark:text-stone-100">
               <Calendar size={16} />
               <span className="text-xs font-bold uppercase tracking-widest">Class Status Tracker © 2026</span>
             </div>
             <div className="flex gap-8">
-              <a href="#" className="text-xs font-bold text-stone-400 uppercase tracking-widest hover:text-black transition-colors">Support</a>
-              <a href="#" className="text-xs font-bold text-stone-400 uppercase tracking-widest hover:text-black transition-colors">Privacy</a>
-              <a href="#" className="text-xs font-bold text-stone-400 uppercase tracking-widest hover:text-black transition-colors">Terms</a>
+              <a href="#" className="text-xs font-bold text-stone-400 uppercase tracking-widest hover:text-black dark:hover:text-stone-100 transition-colors">Support</a>
+              <a href="#" className="text-xs font-bold text-stone-400 uppercase tracking-widest hover:text-black dark:hover:text-stone-100 transition-colors">Privacy</a>
+              <a href="#" className="text-xs font-bold text-stone-400 uppercase tracking-widest hover:text-black dark:hover:text-stone-100 transition-colors">Terms</a>
             </div>
           </div>
         </footer>
@@ -2094,11 +2196,11 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl"
+                className="bg-white dark:bg-stone-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl dark:shadow-black/50 border border-stone-100 dark:border-stone-800"
               >
                 <div className="flex justify-between items-center mb-8">
-                  <h2 className="text-2xl font-bold">Sign Attendance</h2>
-                  <button onClick={() => setIsSigningAttendance(false)} className="p-2 hover:bg-stone-100 rounded-full">
+                  <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">Sign Attendance</h2>
+                  <button onClick={() => setIsSigningAttendance(false)} className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-400 dark:text-stone-500 transition-colors">
                     <Plus size={24} className="rotate-45" />
                   </button>
                 </div>
@@ -2110,7 +2212,7 @@ export default function App() {
                       required
                       value={selectedClassForAttendance}
                       onChange={(e) => setSelectedClassForAttendance(e.target.value)}
-                      className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all appearance-none"
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all appearance-none text-stone-900 dark:text-stone-100"
                     >
                       <option value="">Choose a class...</option>
                       {classes.map(c => (
@@ -2122,7 +2224,7 @@ export default function App() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Attendance Password</label>
                     <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
                       <input 
                         type="text" 
                         required
@@ -2130,20 +2232,20 @@ export default function App() {
                         value={attendancePassword}
                         onChange={(e) => setAttendancePassword(e.target.value.replace(/\D/g, ''))}
                         placeholder="Enter 4-digit code"
-                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:border-black transition-all font-mono tracking-[0.5em]"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono tracking-[0.5em] text-stone-900 dark:text-stone-100"
                       />
                     </div>
                   </div>
 
-                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                    <p className="text-[10px] text-blue-400 uppercase font-bold mb-1">Your Details</p>
-                    <p className="text-sm font-bold text-blue-900">{profile?.displayName}</p>
-                    <p className="text-xs text-blue-700">{profile?.studentId}</p>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
+                    <p className="text-[10px] text-blue-400 dark:text-blue-500 uppercase font-bold mb-1">Your Details</p>
+                    <p className="text-sm font-bold text-blue-900 dark:text-blue-100">{profile?.displayName}</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">{profile?.studentId}</p>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg shadow-black/10 flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50 flex items-center justify-center gap-2"
                   >
                     <Check size={18} />
                     Confirm Attendance

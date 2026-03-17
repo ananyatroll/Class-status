@@ -79,6 +79,21 @@
         "adminComment": { "type": "string" }
       },
       "required": ["studentId", "reason", "startDate", "endDate", "status"]
+    },
+    "AttendanceRecord": {
+      "title": "Attendance Record",
+      "description": "A record of a student's attendance for a specific class.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string", "description": "UID of the student" },
+        "studentId": { "type": "string", "description": "Academic ID of the student" },
+        "studentName": { "type": "string" },
+        "classId": { "type": "string" },
+        "className": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "studentId", "studentName", "classId", "className", "timestamp"]
     }
   },
   "firestore": {
@@ -101,6 +116,10 @@
     "/sick_leaves/{leaveId}": {
       "schema": "SickLeave",
       "description": "Sick leave requests submitted by students."
+    },
+    "/attendance/{recordId}": {
+      "schema": "AttendanceRecord",
+      "description": "Attendance records signed by students."
     }
   }
 }

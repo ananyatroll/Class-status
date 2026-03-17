@@ -39,13 +39,13 @@ export class ErrorBoundary extends (React.Component as any) {
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-stone-50 p-4">
-          <div className="bg-white p-8 rounded-2xl shadow-md max-w-md w-full border border-black/5">
-            <h2 className="text-2xl font-sans font-medium text-red-600 mb-4">Application Error</h2>
-            <p className="text-stone-600 mb-6">{errorMessage}</p>
+        <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950 p-4">
+          <div className="bg-white dark:bg-stone-900 p-8 rounded-2xl shadow-md max-w-md w-full border border-black/5 dark:border-white/5">
+            <h2 className="text-2xl font-sans font-medium text-red-600 dark:text-red-400 mb-4">Application Error</h2>
+            <p className="text-stone-600 dark:text-stone-400 mb-6">{errorMessage}</p>
             <button
               onClick={() => window.location.reload()}
-              className="w-full py-3 bg-black text-white rounded-xl font-medium hover:bg-stone-800 transition-colors"
+              className="w-full py-3 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-xl font-medium hover:bg-stone-800 dark:hover:bg-stone-200 transition-colors"
             >
               Reload Application
             </button>
