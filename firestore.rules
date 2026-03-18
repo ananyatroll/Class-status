@@ -1,6 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /system_settings/{settingId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
     // ===============================================================
     // Assumed Data Model
     // ===============================================================
@@ -77,9 +82,10 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (request.auth.token.email == "ananyabayable06@gmail.com" ||
-         request.auth.token.email == "amira.ugr-1450-18@aau.edu.et" ||
-         request.auth.token.email == "bereket.ugr-6706-18@aau.edu.et" ||
+        (((request.auth.token.email == "ananyabayable06@gmail.com" ||
+           request.auth.token.email == "amira.ugr-1450-18@aau.edu.et" ||
+           request.auth.token.email == "bereket.ugr-6706-18@aau.edu.et") && 
+          request.auth.token.email_verified == true) ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') == 'admin'));
     }
@@ -103,8 +109,10 @@ service cloud.firestore {
              data.dayOfWeek in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] &&
              data.time is string && data.time.size() > 0 && data.time.size() < 50 &&
              (!('instructor' in data) || (data.instructor is string && data.instructor.size() < 100)) &&
-             (!('details' in data) || (data.details is string && data.details.size() < 500)) &&
-             (!('room' in data) || (data.room is string || data.room == null)) &&
+             (!('details' in data) || (data.details is string && data.details.size() < 1000)) &&
+             (!('room' in data) || (data.room is string && data.room.size() < 50)) &&
+             (!('duration' in data) || (data.duration is string && data.duration.size() < 50)) &&
+             (!('attendanceCode' in data) || (data.attendanceCode is string && data.attendanceCode.size() < 20)) &&
              (!('id' in data) || (data.id is string)) &&
              (!('updatedAt' in data) || (data.updatedAt is string)) &&
              (!('updatedBy' in data) || (data.updatedBy is string));
@@ -125,7 +133,9 @@ service cloud.firestore {
              data.dueDate is string && data.dueDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
              data.priority in ['low', 'medium', 'high'] &&
              (!('course' in data) || (data.course is string && data.course.size() < 100)) &&
-             (!('notes' in data) || (data.notes is string && data.notes.size() < 1000));
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 1000)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string)) &&
+             (!('updatedBy' in data) || (data.updatedBy is string));
     }
 
     function isValidSickLeave(data) {
@@ -170,7 +180,12 @@ service cloud.firestore {
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
                     (isAdmin() || (
                       request.resource.data.role == resource.data.role &&
-                      (!('studentId' in resource.data) || request.resource.data.studentId == resource.data.studentId)
+                      (
+                        !('studentId' in resource.data) || 
+                        resource.data.studentId == "" || 
+                        resource.data.studentId == null ||
+                        request.resource.data.studentId == resource.data.studentId
+                      )
                     ));
 
       match /important_deadlines/{deadlineId} {
@@ -229,7 +244,7 @@ service cloud.firestore {
       allow update: if isOwner(resource.data.uid) && isValidDeviceLock(request.resource.data);
       allow delete: if isAdmin();
     }
-    
+
     match /{path=**} {
       allow read, write: if false;
     }

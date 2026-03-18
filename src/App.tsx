@@ -594,6 +594,26 @@ export default function App() {
   }, [isAuthReady, user]);
 
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [signOutPasscode, setSignOutPasscode] = useState('');
+  const [newSignOutPasscode, setNewSignOutPasscode] = useState('');
+  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
+  const [passcodeAttempt, setPasscodeAttempt] = useState('');
+
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+
+    const unsubscribe = onSnapshot(doc(db, 'system_settings', 'config'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setSignOutPasscode(data.signOutPasscode || '');
+        setNewSignOutPasscode(data.signOutPasscode || '');
+      }
+    }, (error) => {
+      console.error('Error listening to system settings:', error);
+      handleFirestoreError(error, OperationType.GET, 'system_settings/config');
+    });
+    return unsubscribe;
+  }, [isAuthReady, user]);
 
   const handleUpdateProfile = async () => {
     if (!user || !profile) return;
@@ -620,6 +640,12 @@ export default function App() {
 
       await updateDoc(doc(db, 'users', user.uid), updateData);
       
+      if (isAdmin) {
+        await setDoc(doc(db, 'system_settings', 'config'), { 
+          signOutPasscode: newSignOutPasscode 
+        }, { merge: true });
+      }
+
       setProfile({ 
         ...profile, 
         studentId: trimmedId, 
@@ -714,7 +740,23 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => {
+    if (signOutPasscode) {
+      setShowPasscodeModal(true);
+    } else {
+      signOut(auth);
+    }
+  };
+
+  const verifyPasscodeAndLogout = () => {
+    if (passcodeAttempt === signOutPasscode) {
+      signOut(auth);
+      setShowPasscodeModal(false);
+      setPasscodeAttempt('');
+    } else {
+      showToast('Incorrect passcode', 'error');
+    }
+  };
 
   const handleSaveDeadline = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1182,9 +1224,14 @@ export default function App() {
                 </button>
 
                 {authError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center gap-2 text-red-600 dark:text-red-400 text-xs text-left">
-                    <AlertCircle size={14} className="shrink-0" />
-                    {authError}
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center justify-between gap-2 text-red-600 dark:text-red-400 text-xs text-left">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} className="shrink-0" />
+                      {authError}
+                    </div>
+                    <button onClick={() => setAuthError(null)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-full transition-colors">
+                      <X size={12} />
+                    </button>
                   </div>
                 )}
 
@@ -1301,9 +1348,14 @@ export default function App() {
                   </div>
 
                   {authError && (
-                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center gap-2 text-red-600 dark:text-red-400 text-xs text-left">
-                      <AlertCircle size={14} />
-                      {authError}
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center justify-between gap-2 text-red-600 dark:text-red-400 text-xs text-left">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={14} />
+                        {authError}
+                      </div>
+                      <button onClick={() => setAuthError(null)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-full transition-colors">
+                        <X size={12} />
+                      </button>
                     </div>
                   )}
 
@@ -1360,26 +1412,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 font-sans selection:bg-blue-600 selection:text-white pb-24 transition-colors duration-300">
-        {/* Missing Student ID Warning */}
-        {profile && profile.role === 'student' && !profile.studentId && activeTab !== 'profile' && (
-          <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
-                <AlertCircle size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-amber-900">Student ID Required</p>
-                <p className="text-xs text-amber-700">Please complete your profile to use all features.</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setActiveTab('profile')}
-              className="px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-xl hover:bg-amber-700 transition-colors"
-            >
-              FIX NOW
-            </button>
-          </div>
-        )}
+        {/* Missing Student ID Warning removed as requested */}
 
         {/* Conditional Header */}
         {activeTab === 'status' && (
@@ -1858,6 +1891,25 @@ export default function App() {
                         )}
                       </div>
                     </div>
+
+                    {isAdmin && (
+                      <div className="space-y-2 pt-4 border-t border-stone-100 dark:border-stone-800">
+                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Admin: Sign-Out Passcode</label>
+                        <div className="relative">
+                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
+                          <input 
+                            type="text" 
+                            value={newSignOutPasscode}
+                            onChange={(e) => setNewSignOutPasscode(e.target.value)}
+                            placeholder="Set passcode for sign-out"
+                            className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
+                          />
+                        </div>
+                        <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">
+                          This passcode will be required for anyone to sign out.
+                        </p>
+                      </div>
+                    )}
 
                     <button
                       onClick={handleUpdateProfile}
@@ -2642,6 +2694,60 @@ export default function App() {
                     Confirm Attendance
                   </button>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Sign Out Passcode Modal */}
+        <AnimatePresence>
+          {showPasscodeModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowPasscodeModal(false)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative bg-white dark:bg-stone-900 w-full max-w-sm rounded-[32px] p-8 shadow-2xl border border-stone-100 dark:border-stone-800"
+              >
+                <div className="text-center mb-8">
+                  <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto mb-4">
+                    <Lock size={28} />
+                  </div>
+                  <h3 className="text-xl font-bold text-stone-900 dark:text-stone-100">Sign Out Required</h3>
+                  <p className="text-sm text-stone-500 dark:text-stone-400 mt-2">Please enter the admin passcode to sign out.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <input 
+                    type="password"
+                    value={passcodeAttempt}
+                    onChange={(e) => setPasscodeAttempt(e.target.value)}
+                    placeholder="Enter Passcode"
+                    className="w-full px-4 py-4 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 text-center text-xl tracking-widest font-bold"
+                    autoFocus
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => { setShowPasscodeModal(false); setPasscodeAttempt(''); }}
+                      className="py-4 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-2xl font-bold hover:bg-stone-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={verifyPasscodeAndLogout}
+                      className="py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold hover:bg-stone-800 transition-colors"
+                    >
+                      Verify
+                    </button>
+                  </div>
+                </div>
               </motion.div>
             </div>
           )}
