@@ -26,7 +26,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
-  signInAnonymously
+  signInAnonymously,
+  runTransaction,
+  increment
 } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
@@ -182,7 +184,10 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const lastClassesRef = useRef<Record<string, ClassStatus>>({});
+  const lastClassesFullRef = useRef<Record<string, ClassUpdate>>({});
+  const lastDeadlinesRef = useRef<Set<string>>(new Set());
+  const isInitialClassesLoad = useRef(true);
+  const isInitialDeadlinesLoad = useRef(true);
   const notifiedClassesRef = useRef<Set<string>>(new Set());
   const [editingClass, setEditingClass] = useState<ClassUpdate | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,11 +223,23 @@ export default function App() {
   const [sickLeaveEnd, setSickLeaveEnd] = useState('');
 
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState<Record<string, number>>({});
+  const [deviceId] = useState(() => {
+    let id = localStorage.getItem('attendance_device_id');
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem('attendance_device_id', id);
+    }
+    return id;
+  });
   const [attendanceFilterSubject, setAttendanceFilterSubject] = useState<string>('All');
   const [attendanceFilterDate, setAttendanceFilterDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isSigningAttendance, setIsSigningAttendance] = useState(false);
   const [selectedClassForAttendance, setSelectedClassForAttendance] = useState<string>('');
   const [attendancePassword, setAttendancePassword] = useState('');
+  const [isAddingStudentToAttendance, setIsAddingStudentToAttendance] = useState(false);
+  const [adminStudentName, setAdminStudentName] = useState('');
+  const [adminStudentId, setAdminStudentId] = useState('');
   const [activeTab, setActiveTab] = useState<'status' | 'schedule' | 'deadlines' | 'profile' | 'sick-leave' | 'attendance'>('status');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -341,17 +358,38 @@ export default function App() {
       });
 
       // Check for changes to trigger notifications
-      sortedClasses.forEach(newClass => {
-        const oldStatus = lastClassesRef.current[newClass.id];
-        if (oldStatus !== undefined && oldStatus !== newClass.status && newClass.status !== 'normal') {
-          triggerNotification(newClass);
+      newClasses.forEach(newClass => {
+        const oldClass = lastClassesFullRef.current[newClass.id];
+        
+        if (!isInitialClassesLoad.current) {
+          if (oldClass === undefined) {
+            // New Class Added
+            triggerNotification({
+              title: 'New Class Added',
+              body: `${newClass.name} with ${newClass.instructor} has been added to the schedule.`
+            });
+          } else {
+            // Check for updates
+            let changes = [];
+            if (oldClass.status !== newClass.status) changes.push(`Status: ${newClass.status.toUpperCase()}`);
+            if (oldClass.room !== newClass.room) changes.push(`Room: ${newClass.room || 'TBA'}`);
+            if (oldClass.time !== newClass.time) changes.push(`Time: ${newClass.time}`);
+            
+            if (changes.length > 0) {
+              triggerNotification({
+                title: `${newClass.name} Updated`,
+                body: changes.join(' | ') + (newClass.details ? ` - ${newClass.details}` : '')
+              });
+            }
+          }
         }
       });
 
+      isInitialClassesLoad.current = false;
       // Update ref and state
-      const statusMap: Record<string, ClassStatus> = {};
-      sortedClasses.forEach(c => statusMap[c.id] = c.status);
-      lastClassesRef.current = statusMap;
+      const classMap: Record<string, ClassUpdate> = {};
+      newClasses.forEach(c => classMap[c.id] = c);
+      lastClassesFullRef.current = classMap;
       setClasses(sortedClasses);
     }, (error) => {
       console.error('Classes Listener error:', error);
@@ -420,6 +458,20 @@ export default function App() {
     const q = query(collection(db, 'deadlines'), orderBy('dueDate'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const deadlineData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Deadline));
+      
+      if (!isInitialDeadlinesLoad.current) {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === 'added') {
+            const newDeadline = change.doc.data() as Deadline;
+            triggerNotification({
+              title: 'New Assignment Added',
+              body: `${newDeadline.title} for ${newDeadline.course || 'General'} is due on ${newDeadline.dueDate}.`
+            });
+          }
+        });
+      }
+
+      isInitialDeadlinesLoad.current = false;
       setDeadlines(deadlineData);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'deadlines');
@@ -495,6 +547,26 @@ export default function App() {
     return unsubscribe;
   }, [isAuthReady, user, isAdmin]);
 
+  // Attendance Stats Listener
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+
+    const unsubscribe = onSnapshot(collection(db, 'attendance_stats'), (snapshot) => {
+      const stats: Record<string, number> = {};
+      snapshot.docs.forEach(doc => {
+        stats[doc.id] = doc.data().count || 0;
+      });
+      setAttendanceStats(stats);
+    }, (error) => {
+      console.error('Attendance Stats Listener error:', error);
+      if (error instanceof Error && !error.message.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.LIST, 'attendance_stats');
+      }
+    });
+
+    return unsubscribe;
+  }, [isAuthReady, user]);
+
   const handleUpdateProfile = async () => {
     if (!user || !profile) return;
     if (!studentId || studentId.trim().length < 5) {
@@ -513,10 +585,8 @@ export default function App() {
     }
   };
 
-  const triggerNotification = (classUpdate: ClassUpdate) => {
+  const triggerNotification = ({ title, body }: { title: string, body: string }) => {
     if (notificationPermission === 'granted') {
-      const title = `${classUpdate.name} ${classUpdate.status.charAt(0).toUpperCase() + classUpdate.status.slice(1)} Today`;
-      const body = `${classUpdate.instructor}'s class at ${classUpdate.time} has been ${classUpdate.status}. ${classUpdate.details || ''}`;
       new Notification(title, { body, icon: '/favicon.ico' });
     }
   };
@@ -695,23 +765,120 @@ export default function App() {
       return;
     }
 
-    const attendanceRecord = {
-      uid: user.uid,
-      studentId: profile.studentId,
-      studentName: profile.displayName,
-      timestamp: new Date().toISOString(),
-      classId: selectedClass.id,
-      className: selectedClass.name
-    };
+    const todayDate = new Date().toISOString().split('T')[0];
+    const statsId = `${selectedClass.id}_${todayDate}`;
+    const recordId = `${selectedClass.id}_${todayDate}_${profile.studentId?.replace(/\//g, '_')}`;
+    const deviceLockId = `${deviceId}_${selectedClass.id}_${todayDate}`;
 
+    setIsSigningAttendance(true);
     try {
-      await addDoc(collection(db, 'attendance'), attendanceRecord);
+      await runTransaction(db, async (transaction) => {
+        const statsDocRef = doc(db, 'attendance_stats', statsId);
+        const recordDocRef = doc(db, 'attendance', recordId);
+        const deviceLockDocRef = doc(db, 'device_locks', deviceLockId);
+
+        const statsDoc = await transaction.get(statsDocRef);
+        const recordDoc = await transaction.get(recordDocRef);
+        const deviceLockDoc = await transaction.get(deviceLockDocRef);
+
+        if (recordDoc.exists()) {
+          throw new Error('You have already signed attendance for this subject today.');
+        }
+
+        if (deviceLockDoc.exists() && deviceLockDoc.data().uid !== user.uid) {
+          throw new Error('Another student has already signed attendance from this device for this subject today.');
+        }
+
+        const currentCount = statsDoc.exists() ? statsDoc.data().count : 0;
+        if (currentCount >= 5) {
+          throw new Error('Attendance limit reached! Maximum 5 students allowed per subject per day.');
+        }
+
+        const attendanceRecord = {
+          uid: user.uid,
+          studentId: profile.studentId,
+          studentName: profile.displayName,
+          timestamp: new Date().toISOString(),
+          classId: selectedClass.id,
+          className: selectedClass.name,
+          deviceId: deviceId
+        };
+
+        transaction.set(recordDocRef, attendanceRecord);
+        transaction.set(statsDocRef, { count: increment(1) }, { merge: true });
+        transaction.set(deviceLockDocRef, { 
+          uid: user.uid, 
+          studentId: profile.studentId, 
+          timestamp: new Date().toISOString() 
+        });
+      });
+
       setIsSigningAttendance(false);
       setSelectedClassForAttendance('');
       setAttendancePassword('');
       alert('Attendance signed successfully!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'attendance');
+    } catch (error: any) {
+      setIsSigningAttendance(false);
+      if (error.message.includes('Attendance limit reached') || error.message.includes('already signed')) {
+        alert(error.message);
+      } else {
+        handleFirestoreError(error, OperationType.WRITE, 'attendance');
+      }
+    }
+  };
+
+  const handleAddStudentToAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin || !selectedClassForAttendance || !adminStudentName || !adminStudentId) return;
+
+    const selectedClass = classes.find(c => c.id === selectedClassForAttendance);
+    if (!selectedClass) return;
+
+    const todayDate = new Date().toISOString().split('T')[0];
+    const statsId = `${selectedClass.id}_${todayDate}`;
+    const recordId = `${selectedClass.id}_${todayDate}_${adminStudentId.replace(/\//g, '_')}`;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const statsDocRef = doc(db, 'attendance_stats', statsId);
+        const recordDocRef = doc(db, 'attendance', recordId);
+
+        const statsDoc = await transaction.get(statsDocRef);
+        const recordDoc = await transaction.get(recordDocRef);
+
+        if (recordDoc.exists()) {
+          throw new Error('This student has already signed attendance for this subject today.');
+        }
+
+        const currentCount = statsDoc.exists() ? statsDoc.data().count : 0;
+        if (currentCount >= 5) {
+          throw new Error('Attendance limit reached! Maximum 5 students allowed per subject per day.');
+        }
+
+        const attendanceRecord = {
+          uid: `admin_added_${Date.now()}`, // Placeholder UID for admin-added students
+          studentId: adminStudentId,
+          studentName: adminStudentName,
+          timestamp: new Date().toISOString(),
+          classId: selectedClass.id,
+          className: selectedClass.name
+        };
+
+        transaction.set(recordDocRef, attendanceRecord);
+        transaction.set(statsDocRef, { count: increment(1) }, { merge: true });
+      });
+
+      setIsAddingStudentToAttendance(false);
+      setAdminStudentName('');
+      setAdminStudentId('');
+      setSelectedClassForAttendance('');
+      alert('Student added to attendance successfully!');
+    } catch (error: any) {
+      if (error.message.includes('Attendance limit reached') || error.message.includes('already signed')) {
+        alert(error.message);
+      } else {
+        handleFirestoreError(error, OperationType.WRITE, 'attendance');
+      }
     }
   };
 
@@ -1579,11 +1746,39 @@ export default function App() {
                           type="text" 
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
+                          disabled={!!profile?.studentId && !isAdmin}
                           placeholder="UGR/****/**"
-                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
+                          className={`w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100 ${profile?.studentId && !isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
                         />
                       </div>
-                      <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/****/**</p>
+                      <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">
+                        {profile?.studentId && !isAdmin 
+                          ? 'Student ID is locked. Contact admin to change.' 
+                          : 'Format: UGR/****/**'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Notifications</label>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-4 rounded-2xl flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Bell size={18} className="text-stone-400" />
+                          <div>
+                            <p className="text-sm font-bold text-stone-900 dark:text-stone-100">Push Notifications</p>
+                            <p className="text-[10px] text-stone-400 dark:text-stone-500">Get updates on classes and assignments</p>
+                          </div>
+                        </div>
+                        {notificationPermission === 'granted' ? (
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-full uppercase">Enabled</span>
+                        ) : (
+                          <button 
+                            onClick={requestNotificationPermission}
+                            className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-full uppercase hover:bg-blue-100 transition-colors"
+                          >
+                            Enable
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <button
@@ -1616,13 +1811,22 @@ export default function App() {
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-sm font-bold text-stone-400 uppercase tracking-widest">Attendance Counter</h2>
                   {isAdmin && (
-                    <button
-                      onClick={handleExportAttendance}
-                      className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100"
-                    >
-                      <Download size={14} />
-                      Export CSV
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setIsAddingStudentToAttendance(true)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100 dark:shadow-black/20"
+                      >
+                        <Plus size={14} />
+                        Add Student
+                      </button>
+                      <button
+                        onClick={handleExportAttendance}
+                        className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100 dark:shadow-black/20"
+                      >
+                        <Download size={14} />
+                        Export CSV
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -1654,12 +1858,33 @@ export default function App() {
                 <div className="bg-blue-600 dark:bg-blue-700 rounded-[32px] p-10 text-center text-white shadow-xl shadow-blue-100 dark:shadow-black/20">
                   <p className="text-blue-100 text-xs font-bold uppercase tracking-[0.2em] mb-4">Total Attendance</p>
                   <div className="text-7xl font-bold mb-2">
-                    {attendance.filter(record => {
-                      const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
-                      const matchesDate = recordDate === attendanceFilterDate;
-                      const matchesSubject = attendanceFilterSubject === 'All' || record.className === attendanceFilterSubject;
-                      return matchesDate && matchesSubject;
-                    }).length}
+                    {(() => {
+                      if (isAdmin) {
+                        return attendance.filter(record => {
+                          const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+                          const matchesDate = recordDate === attendanceFilterDate;
+                          const matchesSubject = attendanceFilterSubject === 'All' || record.className === attendanceFilterSubject;
+                          return matchesDate && matchesSubject;
+                        }).length;
+                      } else {
+                        if (attendanceFilterSubject === 'All') {
+                          // For students, "All" only shows their own count across subjects
+                          return attendance.filter(record => {
+                            const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+                            return recordDate === attendanceFilterDate;
+                          }).length;
+                        } else {
+                          // For a specific subject, show the total count from stats
+                          const selectedClass = classes.find(c => c.name === attendanceFilterSubject);
+                          if (selectedClass) {
+                            const statsId = `${selectedClass.id}_${attendanceFilterDate}`;
+                            return attendanceStats[statsId] || 0;
+                          }
+                          return 0;
+                        }
+                      }
+                    })()}
+                    {attendanceFilterSubject !== 'All' && <span className="text-3xl opacity-50 ml-2">/ 5</span>}
                   </div>
                   <p className="text-blue-100/80 text-sm font-medium">
                     {attendanceFilterSubject === 'All' ? 'Across all subjects' : `For ${attendanceFilterSubject}`}
@@ -2188,6 +2413,82 @@ export default function App() {
             </div>
           </div>
         </footer>
+        {/* Attendance Sign-In Modal */}
+        <AnimatePresence>
+          {isAddingStudentToAttendance && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="bg-white dark:bg-stone-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl dark:shadow-black/50 border border-stone-100 dark:border-stone-800"
+              >
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">Add Student to Attendance</h2>
+                  <button onClick={() => setIsAddingStudentToAttendance(false)} className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-400 dark:text-stone-500 transition-colors">
+                    <Plus size={24} className="rotate-45" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddStudentToAttendance} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Select Class</label>
+                    <select 
+                      required
+                      value={selectedClassForAttendance}
+                      onChange={(e) => setSelectedClassForAttendance(e.target.value)}
+                      className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all appearance-none text-stone-900 dark:text-stone-100"
+                    >
+                      <option value="">Choose a class...</option>
+                      {classes.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.time})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Student Name</label>
+                    <div className="relative">
+                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
+                      <input 
+                        type="text" 
+                        required
+                        value={adminStudentName}
+                        onChange={(e) => setAdminStudentName(e.target.value)}
+                        placeholder="Full Name"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Student ID</label>
+                    <div className="relative">
+                      <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
+                      <input 
+                        type="text" 
+                        required
+                        value={adminStudentId}
+                        onChange={(e) => setAdminStudentId(e.target.value)}
+                        placeholder="e.g. UGR/1234/15"
+                        className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50 flex items-center justify-center gap-2"
+                  >
+                    <Check size={18} />
+                    Add to Attendance
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* Attendance Sign-In Modal */}
         <AnimatePresence>
           {isSigningAttendance && (

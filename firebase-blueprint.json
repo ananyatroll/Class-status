@@ -20,6 +20,9 @@
           "description": "Day of the week the class occurs"
         },
         "time": { "type": "string", "description": "Time of the class" },
+        "room": { "type": "string", "description": "Room number" },
+        "duration": { "type": "string", "description": "Duration of the class" },
+        "attendanceCode": { "type": "string", "description": "4-digit attendance code" },
         "updatedAt": { "type": "string", "format": "date-time", "description": "When the status was last updated" },
         "updatedBy": { "type": "string", "description": "UID of the admin who updated the status" }
       },
@@ -46,9 +49,11 @@
       "properties": {
         "id": { "type": "string" },
         "title": { "type": "string" },
-        "type": { "type": "string", "enum": ["assignment", "test", "quiz", "other"] },
+        "type": { "type": "string", "enum": ["assignment", "test", "quiz", "meeting", "other"] },
         "dueDate": { "type": "string", "format": "date" },
         "course": { "type": "string" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "notes": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "type", "dueDate"]
@@ -72,6 +77,7 @@
         "studentId": { "type": "string" },
         "studentName": { "type": "string" },
         "reason": { "type": "string" },
+        "type": { "type": "string", "enum": ["illness", "event"] },
         "startDate": { "type": "string", "format": "date" },
         "endDate": { "type": "string", "format": "date" },
         "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
@@ -91,9 +97,30 @@
         "studentName": { "type": "string" },
         "classId": { "type": "string" },
         "className": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "timestamp": { "type": "string", "format": "date-time" },
+        "deviceId": { "type": "string", "description": "Unique ID of the device used" }
       },
       "required": ["uid", "studentId", "studentName", "classId", "className", "timestamp"]
+    },
+    "AttendanceStats": {
+      "title": "Attendance Stats",
+      "description": "Daily attendance count for a specific class.",
+      "type": "object",
+      "properties": {
+        "count": { "type": "integer", "minimum": 0, "maximum": 5 }
+      },
+      "required": ["count"]
+    },
+    "DeviceLock": {
+      "title": "Device Lock",
+      "description": "Prevents multiple students from using the same device for attendance on the same day.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "studentId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "studentId", "timestamp"]
     }
   },
   "firestore": {
@@ -120,6 +147,14 @@
     "/attendance/{recordId}": {
       "schema": "AttendanceRecord",
       "description": "Attendance records signed by students."
+    },
+    "/attendance_stats/{statsId}": {
+      "schema": "AttendanceStats",
+      "description": "Daily attendance counts per class."
+    },
+    "/device_locks/{lockId}": {
+      "schema": "DeviceLock",
+      "description": "Locks a device to a specific user for a class on a specific day."
     }
   }
 }

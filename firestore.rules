@@ -140,11 +140,22 @@ service cloud.firestore {
     }
 
     function isValidAttendance(data) {
-      return data.uid == request.auth.uid &&
+      return (data.uid == request.auth.uid || data.uid.matches("^admin_added_.*")) &&
              data.studentId is string && data.studentId.size() > 0 &&
              data.studentName is string && data.studentName.size() > 0 &&
              data.classId is string && data.classId.size() > 0 &&
              data.className is string && data.className.size() > 0 &&
+             data.timestamp is string &&
+             (!('deviceId' in data) || (data.deviceId is string && data.deviceId.size() < 100));
+    }
+
+    function isValidAttendanceStats(data) {
+      return data.count is int && data.count >= 0 && data.count <= 5;
+    }
+
+    function isValidDeviceLock(data) {
+      return data.uid == request.auth.uid &&
+             data.studentId is string &&
              data.timestamp is string;
     }
 
@@ -157,7 +168,10 @@ service cloud.firestore {
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
                     (request.resource.data.role == 'student' || isAdmin());
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
-                    (request.resource.data.role == resource.data.role || isAdmin());
+                    (isAdmin() || (
+                      request.resource.data.role == resource.data.role &&
+                      (!('studentId' in resource.data) || request.resource.data.studentId == resource.data.studentId)
+                    ));
 
       match /important_deadlines/{deadlineId} {
         allow read: if isOwner(userId);
@@ -192,8 +206,27 @@ service cloud.firestore {
 
     match /attendance/{recordId} {
       allow read: if isAuthenticated() && (isAdmin() || (resource.data.uid == request.auth.uid));
-      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid && 
-                    isValidAttendance(request.resource.data);
+      allow create: if isAuthenticated() && (
+        isAdmin() || 
+        (request.resource.data.uid == request.auth.uid && 
+         isValidAttendance(request.resource.data) &&
+         request.resource.data.studentId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId)
+      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /attendance_stats/{statsId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAttendanceStats(request.resource.data);
+      allow update: if isAuthenticated() && isValidAttendanceStats(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /device_locks/{lockId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidDeviceLock(request.resource.data);
+      allow update: if isOwner(resource.data.uid) && isValidDeviceLock(request.resource.data);
       allow delete: if isAdmin();
     }
     
