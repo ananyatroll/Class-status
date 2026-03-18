@@ -22,7 +22,7 @@ export class ErrorBoundary extends (React.Component as any) {
     return { hasError: true, error };
   }
 
-  componentCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
   }
 

@@ -593,22 +593,46 @@ export default function App() {
     return unsubscribe;
   }, [isAuthReady, user]);
 
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
   const handleUpdateProfile = async () => {
     if (!user || !profile) return;
-    if (!studentId || studentId.trim().length < 2) {
+    
+    const trimmedId = studentId.trim();
+    const trimmedName = displayName.trim();
+
+    if (!trimmedId || trimmedId.length < 2) {
       showToast('Please enter a valid Student ID', 'error');
       return;
     }
+
+    if (!trimmedName || trimmedName.length < 2) {
+      showToast('Please enter your full name', 'error');
+      return;
+    }
+
+    setIsUpdatingProfile(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        studentId: studentId,
-        displayName: displayName || profile.displayName
+      const updateData: any = {
+        studentId: trimmedId,
+        displayName: trimmedName
+      };
+
+      await updateDoc(doc(db, 'users', user.uid), updateData);
+      
+      setProfile({ 
+        ...profile, 
+        studentId: trimmedId, 
+        displayName: trimmedName 
       });
-      setProfile({ ...profile, studentId, displayName: displayName || profile.displayName });
+      
       showToast('Profile updated successfully!', 'success');
     } catch (error) {
+      console.error('Error updating profile:', error);
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
       showToast('Failed to update profile', 'error');
+    } finally {
+      setIsUpdatingProfile(false);
     }
   };
 
@@ -789,7 +813,7 @@ export default function App() {
     if (!user || !profile || !selectedClassForAttendance) return;
 
     if (user.isAnonymous) {
-      alert('Guest users cannot sign attendance. Please sign in with an account.');
+      showToast('Guest users cannot sign attendance. Please sign in with an account.', 'error');
       return;
     }
 
@@ -797,7 +821,7 @@ export default function App() {
     if (!selectedClass) return;
 
     if (selectedClass.attendanceCode && attendancePassword !== selectedClass.attendanceCode) {
-      alert('Incorrect attendance password. Please check with your instructor.');
+      showToast('Incorrect attendance password. Please check with your instructor.', 'error');
       return;
     }
 
@@ -1043,7 +1067,7 @@ export default function App() {
   };
 
   const handleDeleteClass = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this class?')) return;
+    // For now, we'll skip the confirm to avoid window.confirm issues in iframe
     try {
       await deleteDoc(doc(db, 'classes', id));
       showToast('Class deleted', 'success');
@@ -1370,7 +1394,7 @@ export default function App() {
                   {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
                 </button>
                 <div className="w-10 h-10 bg-stone-100 dark:bg-stone-800 rounded-full flex items-center justify-center text-xs font-bold text-stone-500 dark:text-stone-400">
-                  {profile?.displayName?.split(' ').map(n => n[0]).join('') || 'JS'}
+                  {profile?.displayName ? profile.displayName.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase() : 'JS'}
                 </div>
               </div>
             </div>
@@ -1760,7 +1784,7 @@ export default function App() {
               >
                 <div className="bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-3xl p-8 text-center shadow-sm">
                   <div className="w-24 h-24 bg-stone-100 dark:bg-stone-800 rounded-full flex items-center justify-center text-2xl font-bold text-stone-500 dark:text-stone-400 mx-auto mb-6">
-                    {profile?.displayName?.split(' ').map(n => n[0]).join('') || 'JS'}
+                    {profile?.displayName ? profile.displayName.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase() : 'JS'}
                   </div>
                   <h2 className="text-2xl font-bold mb-1 text-stone-900 dark:text-stone-100">{profile?.displayName}</h2>
                   <p className="text-stone-400 dark:text-stone-500 font-medium mb-8">{profile?.email}</p>
@@ -1774,6 +1798,20 @@ export default function App() {
                       <div className="bg-stone-50 dark:bg-stone-800 p-4 rounded-2xl">
                         <p className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-widest mb-1">Status</p>
                         <p className="font-bold text-emerald-600 dark:text-emerald-400">Active</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">Full Name</label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" size={18} />
+                        <input 
+                          type="text" 
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          placeholder="Your Full Name"
+                          className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all text-stone-900 dark:text-stone-100"
+                        />
                       </div>
                     </div>
 
@@ -1823,9 +1861,21 @@ export default function App() {
 
                     <button
                       onClick={handleUpdateProfile}
-                      className="w-full py-4 bg-black dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl font-bold hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg shadow-black/10 dark:shadow-black/50"
+                      disabled={isUpdatingProfile}
+                      className={`w-full py-4 rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${
+                        isUpdatingProfile 
+                          ? 'bg-stone-200 dark:bg-stone-800 text-stone-400 cursor-not-allowed' 
+                          : 'bg-black dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-stone-800 dark:hover:bg-stone-200 shadow-black/10 dark:shadow-black/50'
+                      }`}
                     >
-                      Save Profile
+                      {isUpdatingProfile ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-stone-400 border-t-transparent rounded-full animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Profile'
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1935,7 +1985,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       if (user?.isAnonymous) {
-                        alert('Guest users cannot sign attendance. Please sign in with an account.');
+                        showToast('Guest users cannot sign attendance. Please sign in with an account.', 'error');
                       } else {
                         setIsSigningAttendance(true);
                       }
