@@ -242,6 +242,13 @@ export default function App() {
   const [adminStudentId, setAdminStudentId] = useState('');
   const [activeTab, setActiveTab] = useState<'status' | 'schedule' | 'deadlines' | 'profile' | 'sick-leave' | 'attendance'>('status');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark' || 
@@ -280,9 +287,28 @@ export default function App() {
   }, []);
 
   const requestNotificationPermission = async () => {
-    if ('Notification' in window) {
+    if (!('Notification' in window)) {
+      showToast('This browser does not support desktop notifications', 'error');
+      return;
+    }
+    
+    try {
+      // Check if we are in an iframe
+      if (window.self !== window.top) {
+        showToast('Notifications might be blocked in this view. Try opening in a new tab.', 'info');
+      }
+      
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
+      
+      if (permission === 'granted') {
+        showToast('Notifications enabled!', 'success');
+      } else if (permission === 'denied') {
+        showToast('Notification permission denied. Please check browser settings.', 'error');
+      }
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      showToast('Failed to request notification permission', 'error');
     }
   };
 
@@ -569,8 +595,8 @@ export default function App() {
 
   const handleUpdateProfile = async () => {
     if (!user || !profile) return;
-    if (!studentId || studentId.trim().length < 5) {
-      alert('Please enter a valid Student ID');
+    if (!studentId || studentId.trim().length < 2) {
+      showToast('Please enter a valid Student ID', 'error');
       return;
     }
     try {
@@ -579,9 +605,10 @@ export default function App() {
         displayName: displayName || profile.displayName
       });
       setProfile({ ...profile, studentId, displayName: displayName || profile.displayName });
-      alert('Profile updated successfully!');
+      showToast('Profile updated successfully!', 'success');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      showToast('Failed to update profile', 'error');
     }
   };
 
@@ -689,8 +716,10 @@ export default function App() {
       setDeadlinePriority('medium');
       setDeadlineNotes('');
       setIsAddingDeadline(false);
+      showToast('Deadline added successfully!', 'success');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'deadlines');
+      showToast('Failed to add deadline', 'error');
     }
   };
 
@@ -698,8 +727,10 @@ export default function App() {
     if (!profile || profile.role !== 'admin') return;
     try {
       await deleteDoc(doc(db, 'deadlines', id));
+      showToast('Deadline deleted', 'success');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'deadlines');
+      showToast('Failed to delete deadline', 'error');
     }
   };
 
@@ -711,14 +742,17 @@ export default function App() {
     try {
       if (isImportant) {
         await deleteDoc(docRef);
+        showToast('Removed from important', 'info');
       } else {
         await setDoc(docRef, {
           deadlineId,
           markedAt: new Date().toISOString()
         });
+        showToast('Marked as important', 'success');
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/important_deadlines`);
+      showToast('Failed to update importance', 'error');
     }
   };
 
@@ -743,8 +777,10 @@ export default function App() {
       setSickLeaveStart('');
       setSickLeaveEnd('');
       setIsSubmittingSickLeave(false);
+      showToast('Sick leave request submitted!', 'success');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'sick_leaves');
+      showToast('Failed to submit request', 'error');
     }
   };
 
@@ -816,14 +852,10 @@ export default function App() {
       setIsSigningAttendance(false);
       setSelectedClassForAttendance('');
       setAttendancePassword('');
-      alert('Attendance signed successfully!');
+      showToast('Attendance signed successfully!', 'success');
     } catch (error: any) {
       setIsSigningAttendance(false);
-      if (error.message.includes('Attendance limit reached') || error.message.includes('already signed')) {
-        alert(error.message);
-      } else {
-        handleFirestoreError(error, OperationType.WRITE, 'attendance');
-      }
+      showToast(error.message || 'Failed to sign attendance', 'error');
     }
   };
 
@@ -872,12 +904,13 @@ export default function App() {
       setAdminStudentName('');
       setAdminStudentId('');
       setSelectedClassForAttendance('');
-      alert('Student added to attendance successfully!');
+      showToast('Student added to attendance!', 'success');
     } catch (error: any) {
       if (error.message.includes('Attendance limit reached') || error.message.includes('already signed')) {
-        alert(error.message);
+        showToast(error.message, 'error');
       } else {
         handleFirestoreError(error, OperationType.WRITE, 'attendance');
+        showToast('Failed to add student', 'error');
       }
     }
   };
@@ -916,8 +949,10 @@ export default function App() {
         status,
         adminComment: comment || ''
       });
+      showToast(`Request ${status}`, status === 'approved' ? 'success' : 'error');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'sick_leaves');
+      showToast('Failed to update status', 'error');
     }
   };
 
@@ -999,9 +1034,11 @@ export default function App() {
       console.log('Class saved successfully with ID:', id);
       setShowAdminModal(false);
       setEditingClass(null);
+      showToast(editingClass ? 'Class updated!' : 'New class added!', 'success');
     } catch (error) {
       console.error('Error saving class:', error);
       handleFirestoreError(error, OperationType.WRITE, 'classes');
+      showToast('Failed to save class', 'error');
     }
   };
 
@@ -1009,8 +1046,10 @@ export default function App() {
     if (!window.confirm('Are you sure you want to delete this class?')) return;
     try {
       await deleteDoc(doc(db, 'classes', id));
+      showToast('Class deleted', 'success');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'classes');
+      showToast('Failed to delete class', 'error');
     }
   };
 
@@ -1102,11 +1141,11 @@ export default function App() {
                         type="text" 
                         value={studentId}
                         onChange={(e) => setStudentId(e.target.value)}
-                        placeholder="e.g. UGR/1234/15"
+                        placeholder="e.g. UGR/1234/18"
                         className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
                       />
                     </div>
-                    <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/****/**</p>
+                    <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/1234/18</p>
                   </div>
                 </div>
 
@@ -1201,11 +1240,11 @@ export default function App() {
                           required
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
-                          placeholder="e.g. UGR/1234/15"
+                          placeholder="e.g. UGR/1234/18"
                           className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
                         />
                       </div>
-                      <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/****/**</p>
+                      <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">Format: UGR/1234/18</p>
                     </div>
                   )}
                   <div className="space-y-2">
@@ -1747,14 +1786,14 @@ export default function App() {
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
                           disabled={!!profile?.studentId && !isAdmin}
-                          placeholder="UGR/****/**"
+                          placeholder="Enter your Student ID (e.g. UGR/1234/18)"
                           className={`w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100 ${profile?.studentId && !isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
                         />
                       </div>
                       <p className="text-[10px] text-stone-400 dark:text-stone-500 italic">
                         {profile?.studentId && !isAdmin 
                           ? 'Student ID is locked. Contact admin to change.' 
-                          : 'Format: UGR/****/**'}
+                          : 'Enter your official university ID (UGR/1234/18). This cannot be changed later.'}
                       </p>
                     </div>
 
@@ -1772,6 +1811,7 @@ export default function App() {
                           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-full uppercase">Enabled</span>
                         ) : (
                           <button 
+                            type="button"
                             onClick={requestNotificationPermission}
                             className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-full uppercase hover:bg-blue-100 transition-colors"
                           >
@@ -2470,7 +2510,7 @@ export default function App() {
                         required
                         value={adminStudentId}
                         onChange={(e) => setAdminStudentId(e.target.value)}
-                        placeholder="e.g. UGR/1234/15"
+                        placeholder="e.g. UGR/1234/18"
                         className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl focus:outline-none focus:border-black dark:focus:border-stone-400 transition-all font-mono text-stone-900 dark:text-stone-100"
                       />
                     </div>
@@ -2554,6 +2594,27 @@ export default function App() {
                 </form>
               </motion.div>
             </div>
+          )}
+        </AnimatePresence>
+
+        {/* Toast Notification */}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border ${
+                toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-500' :
+                toast.type === 'error' ? 'bg-red-600 text-white border-red-500' :
+                'bg-blue-600 text-white border-blue-500'
+              }`}
+            >
+              {toast.type === 'success' && <CheckCircle2 size={18} />}
+              {toast.type === 'error' && <AlertCircle size={18} />}
+              {toast.type === 'info' && <Bell size={18} />}
+              <span className="font-bold text-sm tracking-wide">{toast.message}</span>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
